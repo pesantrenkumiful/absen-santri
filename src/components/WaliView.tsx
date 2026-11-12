@@ -167,43 +167,43 @@ Berikan konsultasi pengasuhan santri yang sangat menyejukkan hati, berbasis nila
       </div>
 
       {/* Navigation Tabs */}
-      <div className="bg-white p-2 rounded-2xl shadow-xs border border-slate-200 flex flex-wrap gap-2 text-xs sm:text-sm">
+      <div className="bg-white p-1.5 rounded-2xl shadow-xs border border-slate-200/90 flex flex-wrap gap-1.5 text-xs sm:text-sm">
         <button
           onClick={() => setActiveTab('dashboard')}
           type="button"
-          className={`flex-1 py-2.5 px-4 rounded-xl font-semibold transition flex items-center justify-center space-x-2 cursor-pointer ${
+          className={`flex-1 py-2 px-3.5 rounded-xl font-medium transition flex items-center justify-center space-x-2 cursor-pointer ${
             activeTab === 'dashboard'
-              ? 'bg-purple-600 text-white shadow-xs'
+              ? 'bg-purple-700 text-white shadow-xs font-semibold'
               : 'hover:bg-slate-100 text-slate-600'
           }`}
         >
-          <i className="fa-solid fa-chart-pie"></i>
+          <i className="fa-solid fa-chart-pie text-xs"></i>
           <span>Ringkasan & Kedisiplinan</span>
         </button>
 
         <button
           onClick={() => setActiveTab('chat')}
           type="button"
-          className={`flex-1 py-2.5 px-4 rounded-xl font-semibold transition flex items-center justify-center space-x-2 cursor-pointer ${
+          className={`flex-1 py-2 px-3.5 rounded-xl font-medium transition flex items-center justify-center space-x-2 cursor-pointer ${
             activeTab === 'chat'
-              ? 'bg-purple-600 text-white shadow-xs'
+              ? 'bg-purple-700 text-white shadow-xs font-semibold'
               : 'hover:bg-slate-100 text-slate-600'
           }`}
         >
-          <i className="fa-solid fa-comments"></i>
+          <i className="fa-solid fa-comments text-xs"></i>
           <span>Chat Ustadz / Admin</span>
         </button>
 
         <button
           onClick={() => setActiveTab('ai')}
           type="button"
-          className={`flex-1 py-2.5 px-4 rounded-xl font-semibold transition flex items-center justify-center space-x-2 cursor-pointer ${
+          className={`flex-1 py-2 px-3.5 rounded-xl font-medium transition flex items-center justify-center space-x-2 cursor-pointer ${
             activeTab === 'ai'
-              ? 'bg-purple-600 text-white shadow-xs'
+              ? 'bg-purple-700 text-white shadow-xs font-semibold'
               : 'hover:bg-slate-100 text-slate-600'
           }`}
         >
-          <i className="fa-solid fa-brain"></i>
+          <i className="fa-solid fa-brain text-xs text-purple-200"></i>
           <span>AI Parenting Islami</span>
         </button>
       </div>

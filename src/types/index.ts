@@ -23,6 +23,7 @@ export interface Santri {
   wali: string;
   hp: string;
   passWali: string;
+  foto?: string;
 }
 
 export interface Guru {
@@ -79,6 +80,7 @@ export interface LandingCMS {
   heroTitle: string;
   heroDesc: string;
   heroIconClass: string;
+  heroImageUrl?: string;
   visi: string;
   misi: string;
   alamat: string;

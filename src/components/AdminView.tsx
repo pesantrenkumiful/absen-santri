@@ -15,6 +15,7 @@ import { callGeminiService } from '../services/geminiService';
 import { PrintableReport } from './PrintableReport';
 import { PrintableQRCards } from './PrintableQRCards';
 import { MonthlyAttendanceChart } from './MonthlyAttendanceChart';
+import { PhotoUploadModal } from './PhotoUploadModal';
 import { formatMonthYear, formatIndonesianDate, getAvailableMonths, INDONESIAN_MONTHS } from '../utils/dateHelper';
 
 interface AdminViewProps {
@@ -152,6 +153,11 @@ export const AdminView: React.FC<AdminViewProps> = ({
 
   // CMS Form State
   const [cmsForm, setCmsForm] = useState<LandingCMS>({ ...cms });
+  const [isCmsPhotoModalOpen, setIsCmsPhotoModalOpen] = useState(false);
+
+  React.useEffect(() => {
+    setCmsForm({ ...cms });
+  }, [cms]);
 
   // Chat State
   const [selectedChatSantriId, setSelectedChatSantriId] = useState<number | null>(null);
@@ -469,98 +475,98 @@ Maksimal 3-4 kalimat.`;
   return (
     <div className="space-y-6">
       {/* Navigation Tabs Admin */}
-      <div className="bg-white p-2 rounded-2xl shadow-xs border border-slate-200 flex flex-wrap gap-1.5 text-xs sm:text-sm">
+      <div className="bg-white p-1.5 rounded-2xl shadow-xs border border-slate-200/90 flex flex-wrap gap-1 text-xs sm:text-sm">
         <button
           onClick={() => setActiveTab('santri')}
           type="button"
-          className={`flex-1 min-w-[110px] py-2.5 px-3 rounded-xl font-semibold transition flex items-center justify-center space-x-1.5 cursor-pointer ${
+          className={`flex-1 min-w-[105px] py-2 px-3 rounded-xl font-medium transition flex items-center justify-center space-x-1.5 cursor-pointer ${
             activeTab === 'santri'
-              ? 'bg-emerald-800 text-white shadow-xs'
+              ? 'bg-emerald-800 text-white shadow-xs font-semibold'
               : 'hover:bg-slate-100 text-slate-600'
           }`}
         >
-          <i className="fa-solid fa-graduation-cap"></i>
+          <i className="fa-solid fa-graduation-cap text-[11px]"></i>
           <span>Data Santri</span>
         </button>
 
         <button
           onClick={() => setActiveTab('cms')}
           type="button"
-          className={`flex-1 min-w-[130px] py-2.5 px-3 rounded-xl font-bold transition flex items-center justify-center space-x-1.5 cursor-pointer ${
+          className={`flex-1 min-w-[125px] py-2 px-3 rounded-xl font-medium transition flex items-center justify-center space-x-1.5 cursor-pointer ${
             activeTab === 'cms'
-              ? 'bg-amber-600 text-white shadow-xs'
-              : 'hover:bg-amber-50 text-amber-800 bg-amber-50/60 border border-amber-200/80'
+              ? 'bg-emerald-800 text-white shadow-xs font-semibold'
+              : 'hover:bg-slate-100 text-slate-600'
           }`}
         >
-          <i className="fa-solid fa-sliders"></i>
-          <span>Edit Tampilan Depan (CMS)</span>
+          <i className="fa-solid fa-sliders text-[11px] text-amber-500"></i>
+          <span>Tampilan Depan</span>
         </button>
 
         <button
           onClick={() => setActiveTab('guru')}
           type="button"
-          className={`flex-1 min-w-[110px] py-2.5 px-3 rounded-xl font-semibold transition flex items-center justify-center space-x-1.5 cursor-pointer ${
+          className={`flex-1 min-w-[105px] py-2 px-3 rounded-xl font-medium transition flex items-center justify-center space-x-1.5 cursor-pointer ${
             activeTab === 'guru'
-              ? 'bg-blue-600 text-white shadow-xs'
+              ? 'bg-emerald-800 text-white shadow-xs font-semibold'
               : 'hover:bg-slate-100 text-slate-600'
           }`}
         >
-          <i className="fa-solid fa-chalkboard-user"></i>
+          <i className="fa-solid fa-chalkboard-user text-[11px]"></i>
           <span>Akun Guru</span>
         </button>
 
         <button
           onClick={() => setActiveTab('wali')}
           type="button"
-          className={`flex-1 min-w-[110px] py-2.5 px-3 rounded-xl font-semibold transition flex items-center justify-center space-x-1.5 cursor-pointer ${
+          className={`flex-1 min-w-[105px] py-2 px-3 rounded-xl font-medium transition flex items-center justify-center space-x-1.5 cursor-pointer ${
             activeTab === 'wali'
-              ? 'bg-purple-600 text-white shadow-xs'
+              ? 'bg-emerald-800 text-white shadow-xs font-semibold'
               : 'hover:bg-slate-100 text-slate-600'
           }`}
         >
-          <i className="fa-solid fa-users"></i>
+          <i className="fa-solid fa-users text-[11px]"></i>
           <span>Akun Wali</span>
         </button>
 
         <button
           onClick={() => setActiveTab('pelanggaran')}
           type="button"
-          className={`flex-1 min-w-[110px] py-2.5 px-3 rounded-xl font-semibold transition flex items-center justify-center space-x-1.5 cursor-pointer ${
+          className={`flex-1 min-w-[105px] py-2 px-3 rounded-xl font-medium transition flex items-center justify-center space-x-1.5 cursor-pointer ${
             activeTab === 'pelanggaran'
-              ? 'bg-rose-600 text-white shadow-xs'
+              ? 'bg-emerald-800 text-white shadow-xs font-semibold'
               : 'hover:bg-slate-100 text-slate-600'
           }`}
         >
-          <i className="fa-solid fa-triangle-exclamation"></i>
+          <i className="fa-solid fa-triangle-exclamation text-[11px]"></i>
           <span>Pelanggaran</span>
         </button>
 
         <button
           onClick={() => setActiveTab('rekap')}
           type="button"
-          className={`flex-1 min-w-[110px] py-2.5 px-3 rounded-xl font-semibold transition flex items-center justify-center space-x-1.5 cursor-pointer ${
+          className={`flex-1 min-w-[110px] py-2 px-3 rounded-xl font-medium transition flex items-center justify-center space-x-1.5 cursor-pointer ${
             activeTab === 'rekap'
-              ? 'bg-emerald-700 text-white shadow-xs'
+              ? 'bg-emerald-800 text-white shadow-xs font-semibold'
               : 'hover:bg-slate-100 text-slate-600'
           }`}
         >
-          <i className="fa-solid fa-clipboard-check"></i>
+          <i className="fa-solid fa-clipboard-check text-[11px]"></i>
           <span>Rekap Absen</span>
         </button>
 
         <button
           onClick={() => setActiveTab('chat')}
           type="button"
-          className={`flex-1 min-w-[120px] py-2.5 px-3 rounded-xl font-semibold transition flex items-center justify-center space-x-1.5 cursor-pointer relative ${
+          className={`flex-1 min-w-[110px] py-2 px-3 rounded-xl font-medium transition flex items-center justify-center space-x-1.5 cursor-pointer relative ${
             activeTab === 'chat'
-              ? 'bg-teal-700 text-white shadow-xs'
+              ? 'bg-emerald-800 text-white shadow-xs font-semibold'
               : 'hover:bg-slate-100 text-slate-600'
           }`}
         >
-          <i className="fa-solid fa-comments"></i>
+          <i className="fa-solid fa-comments text-[11px]"></i>
           <span>Pesan Wali</span>
           {unreadCount > 0 && (
-            <span className="bg-rose-500 text-white text-[10px] font-black px-1.5 py-0.2 rounded-full ml-1">
+            <span className="bg-rose-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full ml-1 leading-none">
               {unreadCount}
             </span>
           )}
@@ -569,26 +575,26 @@ Maksimal 3-4 kalimat.`;
         <button
           onClick={() => setActiveTab('laporan')}
           type="button"
-          className={`flex-1 min-w-[120px] py-2.5 px-3 rounded-xl font-semibold transition flex items-center justify-center space-x-1.5 cursor-pointer ${
+          className={`flex-1 min-w-[115px] py-2 px-3 rounded-xl font-medium transition flex items-center justify-center space-x-1.5 cursor-pointer ${
             activeTab === 'laporan'
-              ? 'bg-rose-700 text-white shadow-xs'
+              ? 'bg-emerald-800 text-white shadow-xs font-semibold'
               : 'hover:bg-slate-100 text-slate-600'
           }`}
         >
-          <i className="fa-solid fa-file-pdf"></i>
+          <i className="fa-solid fa-file-pdf text-[11px]"></i>
           <span>Cetak PDF + AI</span>
         </button>
 
         <button
           onClick={() => setActiveTab('akun_admin')}
           type="button"
-          className={`flex-1 min-w-[125px] py-2.5 px-3 rounded-xl font-bold transition flex items-center justify-center space-x-1.5 cursor-pointer ${
+          className={`flex-1 min-w-[115px] py-2 px-3 rounded-xl font-medium transition flex items-center justify-center space-x-1.5 cursor-pointer ${
             activeTab === 'akun_admin'
-              ? 'bg-slate-900 text-white shadow-xs'
-              : 'hover:bg-slate-100 text-slate-700 bg-slate-50 border border-slate-200'
+              ? 'bg-slate-900 text-white shadow-xs font-semibold'
+              : 'hover:bg-slate-100 text-slate-600'
           }`}
         >
-          <i className="fa-solid fa-user-gear text-amber-500"></i>
+          <i className="fa-solid fa-user-gear text-[11px] text-amber-400"></i>
           <span>Akun Admin</span>
         </button>
       </div>
@@ -882,6 +888,68 @@ Maksimal 3-4 kalimat.`;
                 className="w-full bg-slate-50 border border-slate-300 rounded-xl p-3 text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500"
               />
             </div>
+
+            {/* Foto Utama Banner Pesantren (Galeri & Kamera) */}
+            <div className="bg-slate-50 border border-slate-200 p-4 rounded-2xl space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <label className="block font-bold text-slate-800 text-xs">
+                    Foto Utama Banner Pesantren:
+                  </label>
+                  <p className="text-[11px] text-slate-500">
+                    Bisa diunggah dari galeri file atau langsung dijepret menggunakan kamera perangkat Anda.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsCmsPhotoModalOpen(true)}
+                  className="bg-emerald-700 hover:bg-emerald-800 text-white font-bold px-3.5 py-2 rounded-xl text-xs transition flex items-center space-x-1.5 cursor-pointer shadow-xs self-start sm:self-auto"
+                >
+                  <i className="fa-solid fa-camera"></i>
+                  <span>Unggah dari Galeri / Kamera</span>
+                </button>
+              </div>
+
+              {cmsForm.heroImageUrl ? (
+                <div className="flex items-center space-x-3 bg-white p-2.5 rounded-xl border border-slate-200">
+                  <div className="w-20 h-14 rounded-lg overflow-hidden bg-slate-100 shrink-0 border border-slate-200">
+                    <img
+                      src={cmsForm.heroImageUrl}
+                      alt="Banner Foto"
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                  <div className="flex-grow min-w-0">
+                    <p className="text-xs font-bold text-slate-800 truncate">Foto Kustom Aktif</p>
+                    <p className="text-[10px] text-emerald-600 font-semibold">Tersimpan di Cloud & Tampil di Halaman Depan</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setCmsForm({ ...cmsForm, heroImageUrl: '' })}
+                    className="text-rose-600 hover:text-rose-700 text-xs font-bold px-2.5 py-1 rounded-lg hover:bg-rose-50 cursor-pointer"
+                  >
+                    <i className="fa-solid fa-trash mr-1"></i>Hapus
+                  </button>
+                </div>
+              ) : (
+                <div className="text-[11px] text-slate-400 italic bg-white p-3 rounded-xl border border-dashed border-slate-200">
+                  Belum ada foto kustom yang diunggah (saat ini menggunakan gambar default).
+                </div>
+              )}
+            </div>
+
+            <PhotoUploadModal
+              isOpen={isCmsPhotoModalOpen}
+              onClose={() => setIsCmsPhotoModalOpen(false)}
+              currentPhotoUrl={cmsForm.heroImageUrl || ''}
+              onSavePhoto={(photoUrl) => {
+                setCmsForm((prev) => ({ ...prev, heroImageUrl: photoUrl }));
+                onUpdateCMS({ ...cmsForm, heroImageUrl: photoUrl });
+                onShowToast('Foto banner berhasil diperbarui & disimpan!', 'success');
+              }}
+              title="Ubah Foto Utama Banner Pesantren"
+              description="Pilih foto dari galeri atau potret langsung dengan kamera perangkat."
+            />
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>

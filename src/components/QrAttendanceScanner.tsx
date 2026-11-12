@@ -124,23 +124,34 @@ export const QrAttendanceScanner: React.FC<QrAttendanceScannerProps> = ({
 
       const cameraParam = targetCam ? { deviceId: { exact: targetCam } } : { facingMode: 'environment' };
 
-      await html5QrCode.start(
-        cameraParam,
-        config,
-        (decodedText) => {
-          handleDecodedQr(decodedText);
-        },
-        () => {
-          // ignore frame read errors
-        }
-      );
+      try {
+        await html5QrCode.start(
+          cameraParam,
+          config,
+          (decodedText) => {
+            handleDecodedQr(decodedText);
+          },
+          () => {}
+        );
+      } catch (startErr: any) {
+        // Fallback to front camera or default available camera if environment camera is not found
+        console.warn('Initial camera start failed, attempting fallback camera:', startErr?.message);
+        await html5QrCode.start(
+          { facingMode: 'user' },
+          config,
+          (decodedText) => {
+            handleDecodedQr(decodedText);
+          },
+          () => {}
+        );
+      }
 
       setIsScanning(true);
     } catch (err: any) {
-      console.error('Failed to start camera:', err);
+      console.warn('Camera scanner initialization notice:', err?.message || err);
       setIsScanning(false);
       setCameraError(
-        err?.message || 'Gagal menyalakan kamera. Pastikan izin kamera telah disetujui pada browser.'
+        'Kamera tidak dapat diakses atau sedang digunakan aplikasi lain. Anda dapat menggunakan opsi Input NIS Manual di bawah.'
       );
     }
   };

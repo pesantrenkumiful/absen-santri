@@ -264,59 +264,59 @@ Buatkan draf balasan ramah, santun, Islami, dan informatif dari pihak Ustadz Pen
       </div>
 
       {/* Guru Navigation Tabs */}
-      <div className="bg-white p-2 rounded-2xl shadow-xs border border-slate-200 flex flex-wrap gap-2 text-xs sm:text-sm">
+      <div className="bg-white p-1.5 rounded-2xl shadow-xs border border-slate-200/90 flex flex-wrap gap-1.5 text-xs sm:text-sm">
         <button
           onClick={() => setActiveTab('absen')}
           type="button"
-          className={`flex-1 py-2.5 px-4 rounded-xl font-semibold transition flex items-center justify-center space-x-2 cursor-pointer ${
+          className={`flex-1 py-2 px-3.5 rounded-xl font-medium transition flex items-center justify-center space-x-2 cursor-pointer ${
             activeTab === 'absen'
-              ? 'bg-blue-600 text-white shadow-xs'
+              ? 'bg-blue-600 text-white shadow-xs font-semibold'
               : 'hover:bg-slate-100 text-slate-600'
           }`}
         >
-          <i className="fa-solid fa-clipboard-user"></i>
-          <span>Presensi Harian Santri</span>
+          <i className="fa-solid fa-clipboard-user text-xs"></i>
+          <span>Presensi Harian</span>
         </button>
 
         <button
           onClick={() => setActiveTab('qr_scan')}
           type="button"
-          className={`flex-1 py-2.5 px-4 rounded-xl font-bold transition flex items-center justify-center space-x-2 cursor-pointer ${
+          className={`flex-1 py-2 px-3.5 rounded-xl font-medium transition flex items-center justify-center space-x-2 cursor-pointer ${
             activeTab === 'qr_scan'
-              ? 'bg-emerald-700 text-white shadow-xs'
-              : 'hover:bg-emerald-50 text-emerald-800 bg-emerald-50/60 border border-emerald-200'
+              ? 'bg-emerald-700 text-white shadow-xs font-semibold'
+              : 'hover:bg-emerald-50 text-emerald-800 bg-emerald-50/50 border border-emerald-200/70'
           }`}
         >
-          <i className="fa-solid fa-qrcode text-base"></i>
-          <span>Scan Presensi QR (1x Scan)</span>
+          <i className="fa-solid fa-qrcode text-xs"></i>
+          <span>Scan Presensi QR (1x)</span>
         </button>
 
         <button
           onClick={() => setActiveTab('pelanggaran')}
           type="button"
-          className={`flex-1 py-2.5 px-4 rounded-xl font-semibold transition flex items-center justify-center space-x-2 cursor-pointer ${
+          className={`flex-1 py-2 px-3.5 rounded-xl font-medium transition flex items-center justify-center space-x-2 cursor-pointer ${
             activeTab === 'pelanggaran'
-              ? 'bg-blue-600 text-white shadow-xs'
+              ? 'bg-blue-600 text-white shadow-xs font-semibold'
               : 'hover:bg-slate-100 text-slate-600'
           }`}
         >
-          <i className="fa-solid fa-pen-to-square"></i>
-          <span>Catat Pelanggaran & AI Sanksi</span>
+          <i className="fa-solid fa-pen-to-square text-xs"></i>
+          <span>Catat Pelanggaran & AI</span>
         </button>
 
         <button
           onClick={() => setActiveTab('chat')}
           type="button"
-          className={`flex-1 py-2.5 px-4 rounded-xl font-semibold transition flex items-center justify-center space-x-2 cursor-pointer relative ${
+          className={`flex-1 py-2 px-3.5 rounded-xl font-medium transition flex items-center justify-center space-x-2 cursor-pointer relative ${
             activeTab === 'chat'
-              ? 'bg-blue-600 text-white shadow-xs'
+              ? 'bg-blue-600 text-white shadow-xs font-semibold'
               : 'hover:bg-slate-100 text-slate-600'
           }`}
         >
-          <i className="fa-solid fa-comments"></i>
-          <span>Pesan Wali Santri</span>
+          <i className="fa-solid fa-comments text-xs"></i>
+          <span>Pesan Wali</span>
           {unreadCount > 0 && (
-            <span className="bg-rose-500 text-white text-[10px] font-black px-1.5 py-0.2 rounded-full">
+            <span className="bg-rose-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full ml-1 leading-none">
               {unreadCount}
             </span>
           )}
