@@ -1,0 +1,6 @@
+{
+  "name": "SIPONDOK - Sistem Informasi Pesantren Terpadu",
+  "description": "Sistem Informasi & Manajemen Pembinaan Santri Terpadu Pondok Pesantren Miftahul Ulum Kalisat Jember: presensi harian 12 kelas, kedisiplinan, obrolan wali santri, CMS, cetak PDF resmi ber-KOP Surat, dan asisten Gemini AI.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

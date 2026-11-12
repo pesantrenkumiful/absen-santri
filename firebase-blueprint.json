@@ -1,0 +1,137 @@
+{
+  "entities": {
+    "LandingCMS": {
+      "title": "LandingCMS",
+      "description": "Configuration for landing page and pesantren identity",
+      "type": "object",
+      "properties": {
+        "namaPesantren": { "type": "string" },
+        "tagline": { "type": "string" },
+        "runningBanner": { "type": "string" },
+        "heroTitle": { "type": "string" },
+        "heroDesc": { "type": "string" },
+        "heroIconClass": { "type": "string" },
+        "visi": { "type": "string" },
+        "misi": { "type": "string" },
+        "alamat": { "type": "string" },
+        "telpWA": { "type": "string" },
+        "email": { "type": "string" }
+      },
+      "required": ["namaPesantren", "heroTitle", "visi", "misi"]
+    },
+    "AdminCredentials": {
+      "title": "AdminCredentials",
+      "description": "Administrator login credentials and identity",
+      "type": "object",
+      "properties": {
+        "username": { "type": "string" },
+        "pass": { "type": "string" },
+        "name": { "type": "string" }
+      },
+      "required": ["username", "pass", "name"]
+    },
+    "Santri": {
+      "title": "Santri",
+      "description": "Santri student profile and wali credentials",
+      "type": "object",
+      "properties": {
+        "id": { "type": "number" },
+        "nis": { "type": "string" },
+        "nama": { "type": "string" },
+        "kelas": { "type": "string" },
+        "jk": { "type": "string" },
+        "wali": { "type": "string" },
+        "hp": { "type": "string" },
+        "passWali": { "type": "string" }
+      },
+      "required": ["id", "nis", "nama", "kelas", "jk", "wali", "passWali"]
+    },
+    "Guru": {
+      "title": "Guru",
+      "description": "Guru/Ustadz teacher profile and credentials",
+      "type": "object",
+      "properties": {
+        "id": { "type": "number" },
+        "username": { "type": "string" },
+        "pass": { "type": "string" },
+        "nama": { "type": "string" },
+        "mapel": { "type": "string" },
+        "telp": { "type": "string" },
+        "assignedClasses": {
+          "type": "array"
+        }
+      },
+      "required": ["id", "username", "pass", "nama"]
+    },
+    "AbsensiRecord": {
+      "title": "AbsensiRecord",
+      "description": "Daily attendance status record for a santri",
+      "type": "object",
+      "properties": {
+        "id": { "type": "number" },
+        "santriId": { "type": "number" },
+        "tanggal": { "type": "string" },
+        "status": { "type": "string" }
+      },
+      "required": ["id", "santriId", "tanggal", "status"]
+    },
+    "PelanggaranRecord": {
+      "title": "PelanggaranRecord",
+      "description": "Disciplinary violation record and educational sanction",
+      "type": "object",
+      "properties": {
+        "id": { "type": "number" },
+        "santriId": { "type": "number" },
+        "tanggal": { "type": "string" },
+        "pelanggaran": { "type": "string" },
+        "kategori": { "type": "string" },
+        "sanksi": { "type": "string" }
+      },
+      "required": ["id", "santriId", "tanggal", "pelanggaran", "kategori", "sanksi"]
+    },
+    "ChatMessage": {
+      "title": "ChatMessage",
+      "description": "Direct communication message between wali and admin/guru",
+      "type": "object",
+      "properties": {
+        "id": { "type": "number" },
+        "santriId": { "type": "number" },
+        "senderRole": { "type": "string" },
+        "recipientRole": { "type": "string" },
+        "recipientId": { "type": "number" },
+        "text": { "type": "string" },
+        "time": { "type": "string" },
+        "readByAdmin": { "type": "boolean" },
+        "readByGuru": { "type": "boolean" },
+        "readByWali": { "type": "boolean" }
+      },
+      "required": ["id", "santriId", "senderRole", "recipientRole", "text"]
+    }
+  },
+  "firestore": {
+    "/settings/{settingId}": {
+      "schema": { "$ref": "#/entities/LandingCMS" },
+      "description": "System settings such as CMS landing page configuration and admin credentials"
+    },
+    "/santris/{santriId}": {
+      "schema": { "$ref": "#/entities/Santri" },
+      "description": "Santri directory and wali credentials"
+    },
+    "/gurus/{guruId}": {
+      "schema": { "$ref": "#/entities/Guru" },
+      "description": "Teacher accounts and class assignments"
+    },
+    "/absensis/{absensiId}": {
+      "schema": { "$ref": "#/entities/AbsensiRecord" },
+      "description": "Daily attendance logs"
+    },
+    "/pelanggarans/{pelanggaranId}": {
+      "schema": { "$ref": "#/entities/PelanggaranRecord" },
+      "description": "Disciplinary records"
+    },
+    "/messages/{messageId}": {
+      "schema": { "$ref": "#/entities/ChatMessage" },
+      "description": "Chat messages between guardians and teachers/admin"
+    }
+  }
+}
