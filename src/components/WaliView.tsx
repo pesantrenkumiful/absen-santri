@@ -1,5 +1,14 @@
 import React, { useState } from 'react';
-import { Santri, Guru, AbsensiRecord, PelanggaranRecord, ChatMessage } from '../types';
+import {
+  Santri,
+  Guru,
+  AbsensiRecord,
+  PelanggaranRecord,
+  ChatMessage,
+  ALL_SESI_ABSEN,
+  SESI_ABSEN_CONFIG,
+  SesiAbsen,
+} from '../types';
 import { callGeminiService } from '../services/geminiService';
 import { formatMonthYear, formatIndonesianDate, getAvailableMonths } from '../utils/dateHelper';
 
@@ -51,15 +60,27 @@ export const WaliView: React.FC<WaliViewProps> = ({
 
   // Monthly Attendance state for Wali
   const [selectedMonth, setSelectedMonth] = useState<string>(() => new Date().toISOString().slice(0, 7));
+  const [selectedSesi, setSelectedSesi] = useState<string>('ALL');
   const availableMonths = getAvailableMonths(absensis);
 
-  // Attendance aggregates for current santri filtered by month
+  // Attendance aggregates for current santri filtered by month & session
   const studentAbsensis = absensis.filter((a) => a.santriId === currentSantri.id);
-  const effectiveAbsensis =
+  const monthStudentAbsensis =
     selectedMonth === 'ALL'
       ? studentAbsensis
       : studentAbsensis.filter((a) => a.tanggal.startsWith(selectedMonth));
-  const sortedMonthAbsen = [...effectiveAbsensis].sort((a, b) => b.tanggal.localeCompare(a.tanggal));
+
+  const effectiveAbsensis =
+    selectedSesi === 'ALL'
+      ? monthStudentAbsensis
+      : monthStudentAbsensis.filter((a) => (a.sesi || 'madrasah') === selectedSesi);
+
+  const sortedMonthAbsen = [...effectiveAbsensis].sort((a, b) => {
+    const dateCmp = b.tanggal.localeCompare(a.tanggal);
+    if (dateCmp !== 0) return dateCmp;
+    const order: Record<SesiAbsen, number> = { sorogan: 3, madrasah: 2, subuh: 1 };
+    return (order[b.sesi || 'madrasah'] || 2) - (order[a.sesi || 'madrasah'] || 2);
+  });
 
   const hadirCount = effectiveAbsensis.filter((a) => a.status === 'H').length;
   const sakitCount = effectiveAbsensis.filter((a) => a.status === 'S').length;
@@ -149,7 +170,7 @@ Berikan konsultasi pengasuhan santri yang sangat menyejukkan hati, berbasis nila
             <p className="text-xs text-purple-200/90 flex flex-wrap items-center gap-2 mt-0.5">
               <span>NIS: <strong className="font-mono text-white">{currentSantri.nis}</strong></span>
               <span>&bull;</span>
-              <span>Kelas: <strong className="text-white">{currentSantri.kelas}</strong></span>
+              <span>Kelas: <strong className="text-white">{currentSantri.kelas}</strong>{currentSantri.kelasKedua ? ` + ${currentSantri.kelasKedua}` : ''}</span>
               <span>&bull;</span>
               <span>Wali: {currentSantri.wali}</span>
             </p>
@@ -230,21 +251,82 @@ Berikan konsultasi pengasuhan santri yang sangat menyejukkan hati, berbasis nila
               </div>
             </div>
 
-            <div className="flex items-center space-x-2 self-start sm:self-auto">
-              <label className="text-xs font-semibold text-slate-600 whitespace-nowrap">Pilih Bulan:</label>
-              <select
-                value={selectedMonth}
-                onChange={(e) => setSelectedMonth(e.target.value)}
-                className="bg-slate-50 border border-slate-300 rounded-xl px-3 py-1.5 text-xs font-bold text-purple-900 cursor-pointer focus:ring-2 focus:ring-purple-500 focus:outline-none"
-              >
-                <optgroup label="Pilihan Bulan Rekap">
-                  {availableMonths.map((ym) => (
-                    <option key={ym} value={ym}>{formatMonthYear(ym)}</option>
+            <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+              <div className="flex items-center space-x-1.5">
+                <label className="text-xs font-semibold text-slate-600 whitespace-nowrap">Bulan:</label>
+                <select
+                  value={selectedMonth}
+                  onChange={(e) => setSelectedMonth(e.target.value)}
+                  className="bg-slate-50 border border-slate-300 rounded-xl px-3 py-1.5 text-xs font-bold text-purple-900 cursor-pointer focus:ring-2 focus:ring-purple-500 focus:outline-none"
+                >
+                  <optgroup label="Pilihan Bulan Rekap">
+                    {availableMonths.map((ym) => (
+                      <option key={ym} value={ym}>{formatMonthYear(ym)}</option>
+                    ))}
+                  </optgroup>
+                  <option value="ALL">Semua Bulan (Sepanjang Waktu)</option>
+                </select>
+              </div>
+
+              <div className="flex items-center space-x-1.5">
+                <label className="text-xs font-semibold text-slate-600 whitespace-nowrap">Sesi:</label>
+                <select
+                  value={selectedSesi}
+                  onChange={(e) => setSelectedSesi(e.target.value)}
+                  className="bg-slate-50 border border-slate-300 rounded-xl px-3 py-1.5 text-xs font-bold text-slate-800 cursor-pointer focus:ring-2 focus:ring-purple-500 focus:outline-none"
+                >
+                  <option value="ALL">Semua 3 Sesi</option>
+                  {ALL_SESI_ABSEN.map((sKey) => (
+                    <option key={sKey} value={sKey}>
+                      {SESI_ABSEN_CONFIG[sKey].nomor}: {SESI_ABSEN_CONFIG[sKey].nama}
+                    </option>
                   ))}
-                </optgroup>
-                <option value="ALL">Semua Bulan (Sepanjang Waktu)</option>
-              </select>
+                </select>
+              </div>
             </div>
+          </div>
+
+          {/* Per-Session Summary Strip (1: Subuh, 2: Madrasah, 3: Sorogan) */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {ALL_SESI_ABSEN.map((sKey) => {
+              const info = SESI_ABSEN_CONFIG[sKey];
+              const sRecs = monthStudentAbsensis.filter((a) => (a.sesi || 'madrasah') === sKey);
+              const sHadir = sRecs.filter((a) => a.status === 'H').length;
+              const sTotal = sRecs.length;
+              const sRate = sTotal > 0 ? Math.round((sHadir / sTotal) * 100) : 0;
+              const isSelected = selectedSesi === sKey;
+
+              return (
+                <button
+                  key={sKey}
+                  type="button"
+                  onClick={() => setSelectedSesi(isSelected ? 'ALL' : sKey)}
+                  className={`p-3.5 rounded-2xl border text-left transition cursor-pointer flex items-center justify-between ${
+                    isSelected
+                      ? 'bg-purple-50 border-purple-400 ring-2 ring-purple-200 shadow-xs'
+                      : 'bg-white border-slate-200 hover:border-purple-300 shadow-xs'
+                  }`}
+                >
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <span
+                        className={`w-5 h-5 rounded-md flex items-center justify-center text-[10px] font-black ${info.activeBg}`}
+                      >
+                        {info.nomor}
+                      </span>
+                      <span className="font-bold text-xs text-slate-800 truncate">{info.nama}</span>
+                    </div>
+                    <p className="text-[10px] text-slate-500 mt-1 truncate">{info.keterangan}</p>
+                  </div>
+                  <div className="text-right shrink-0 ml-2">
+                    <span className="text-sm font-black text-emerald-700 block">
+                      {sHadir}/{sTotal}
+                    </span>
+                    <span className="text-[10px] font-bold text-slate-400">{sRate}% Hadir</span>
+                  </div>
+                </button>
+              );
+            })}
           </div>
 
           {/* Attendance KPI Cards */}
@@ -252,7 +334,7 @@ Berikan konsultasi pengasuhan santri yang sangat menyejukkan hati, berbasis nila
             <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex items-center justify-between">
               <div>
                 <p className="text-[11px] text-slate-500 font-semibold uppercase">Hadir (H)</p>
-                <h4 className="text-2xl font-black text-emerald-600 mt-1">{hadirCount} Hari</h4>
+                <h4 className="text-2xl font-black text-emerald-600 mt-1">{hadirCount} Sesi</h4>
                 <span className="text-[10px] text-emerald-600 block mt-0.5 font-semibold">Tingkat: {attendanceRate}%</span>
               </div>
               <div className="w-11 h-11 rounded-xl bg-emerald-100 text-emerald-600 flex items-center justify-center text-lg">
@@ -263,7 +345,7 @@ Berikan konsultasi pengasuhan santri yang sangat menyejukkan hati, berbasis nila
             <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex items-center justify-between">
               <div>
                 <p className="text-[11px] text-slate-500 font-semibold uppercase">Sakit (S)</p>
-                <h4 className="text-2xl font-black text-amber-600 mt-1">{sakitCount} Hari</h4>
+                <h4 className="text-2xl font-black text-amber-600 mt-1">{sakitCount} Sesi</h4>
                 <span className="text-[10px] text-amber-600 block mt-0.5">Izin Medis</span>
               </div>
               <div className="w-11 h-11 rounded-xl bg-amber-100 text-amber-600 flex items-center justify-center text-lg">
@@ -274,7 +356,7 @@ Berikan konsultasi pengasuhan santri yang sangat menyejukkan hati, berbasis nila
             <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex items-center justify-between">
               <div>
                 <p className="text-[11px] text-slate-500 font-semibold uppercase">Izin (I)</p>
-                <h4 className="text-2xl font-black text-blue-600 mt-1">{izinCount} Hari</h4>
+                <h4 className="text-2xl font-black text-blue-600 mt-1">{izinCount} Sesi</h4>
                 <span className="text-[10px] text-blue-600 block mt-0.5">Izin Terencana</span>
               </div>
               <div className="w-11 h-11 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center text-lg">
@@ -285,7 +367,7 @@ Berikan konsultasi pengasuhan santri yang sangat menyejukkan hati, berbasis nila
             <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex items-center justify-between">
               <div>
                 <p className="text-[11px] text-slate-500 font-semibold uppercase">Alpha (A)</p>
-                <h4 className="text-2xl font-black text-rose-600 mt-1">{alphaCount} Hari</h4>
+                <h4 className="text-2xl font-black text-rose-600 mt-1">{alphaCount} Sesi</h4>
                 <span className="text-[10px] text-rose-600 block mt-0.5">Tanpa Keterangan</span>
               </div>
               <div className="w-11 h-11 rounded-xl bg-rose-100 text-rose-600 flex items-center justify-center text-lg">
@@ -314,7 +396,12 @@ Berikan konsultasi pengasuhan santri yang sangat menyejukkan hati, berbasis nila
                 </div>
                 <div>
                   <span className="text-slate-400 block text-[11px]">Tingkatan Kelas:</span>
-                  <span className="font-semibold text-slate-700">{currentSantri.kelas}</span>
+                  <span className="font-semibold text-slate-700 block">{currentSantri.kelas}</span>
+                  {currentSantri.kelasKedua && (
+                    <span className="text-[11px] font-semibold text-purple-700 block mt-0.5">
+                      Program Tambahan: {currentSantri.kelasKedua}
+                    </span>
+                  )}
                 </div>
                 <div>
                   <span className="text-slate-400 block text-[11px]">Jenis Kelamin:</span>
@@ -410,7 +497,8 @@ Berikan konsultasi pengasuhan santri yang sangat menyejukkan hati, berbasis nila
                 <thead className="bg-slate-100 text-slate-700 uppercase font-semibold border-b border-slate-200">
                   <tr>
                     <th className="p-3">No</th>
-                    <th className="p-3">Tanggal Pertemuan</th>
+                    <th className="p-3">Tanggal</th>
+                    <th className="p-3">Sesi Absen</th>
                     <th className="p-3">Status Kehadiran</th>
                     <th className="p-3">Metode Presensi</th>
                   </tr>
@@ -418,48 +506,59 @@ Berikan konsultasi pengasuhan santri yang sangat menyejukkan hati, berbasis nila
                 <tbody className="divide-y divide-slate-100">
                   {sortedMonthAbsen.length === 0 ? (
                     <tr>
-                      <td colSpan={4} className="p-6 text-center text-slate-400">
+                      <td colSpan={5} className="p-6 text-center text-slate-400">
                         Belum ada catatan presensi ananda pada periode {formatMonthYear(selectedMonth)}.
                       </td>
                     </tr>
                   ) : (
-                    sortedMonthAbsen.map((rec, idx) => (
-                      <tr key={rec.id || idx} className="hover:bg-slate-50 transition">
-                        <td className="p-3 font-medium text-slate-500">{idx + 1}</td>
-                        <td className="p-3 font-bold text-slate-800">{formatIndonesianDate(rec.tanggal)}</td>
-                        <td className="p-3">
-                          {rec.status === 'H' && (
-                            <span className="bg-emerald-100 text-emerald-800 border border-emerald-300 text-[10px] font-black px-2.5 py-0.5 rounded-full inline-flex items-center gap-1">
-                              <i className="fa-solid fa-check text-[9px]"></i> Hadir
+                    sortedMonthAbsen.map((rec, idx) => {
+                      const sesiInfo = SESI_ABSEN_CONFIG[(rec.sesi || 'madrasah') as SesiAbsen];
+                      return (
+                        <tr key={rec.id || idx} className="hover:bg-slate-50 transition">
+                          <td className="p-3 font-medium text-slate-500">{idx + 1}</td>
+                          <td className="p-3 font-bold text-slate-800">{formatIndonesianDate(rec.tanggal)}</td>
+                          <td className="p-3">
+                            <span
+                              className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full border inline-flex items-center gap-1 ${sesiInfo.colorBadge}`}
+                            >
+                              <i className={`${sesiInfo.icon} text-[9px]`}></i>
+                              <span>{sesiInfo.nomor}: {sesiInfo.nama}</span>
                             </span>
-                          )}
-                          {rec.status === 'S' && (
-                            <span className="bg-amber-100 text-amber-800 border border-amber-300 text-[10px] font-black px-2.5 py-0.5 rounded-full inline-flex items-center gap-1">
-                              <i className="fa-solid fa-bed text-[9px]"></i> Sakit
-                            </span>
-                          )}
-                          {rec.status === 'I' && (
-                            <span className="bg-blue-100 text-blue-800 border border-blue-300 text-[10px] font-black px-2.5 py-0.5 rounded-full inline-flex items-center gap-1">
-                              <i className="fa-solid fa-envelope-open-text text-[9px]"></i> Izin
-                            </span>
-                          )}
-                          {rec.status === 'A' && (
-                            <span className="bg-rose-100 text-rose-800 border border-rose-300 text-[10px] font-black px-2.5 py-0.5 rounded-full inline-flex items-center gap-1">
-                              <i className="fa-solid fa-xmark text-[9px]"></i> Alpha
-                            </span>
-                          )}
-                        </td>
-                        <td className="p-3 text-slate-500 font-mono text-[11px]">
-                          {rec.metode === 'QR_SCAN' ? (
-                            <span className="text-emerald-700 font-semibold inline-flex items-center gap-1">
-                              <i className="fa-solid fa-qrcode"></i> Scan QR Santri {rec.waktuScan ? `(${rec.waktuScan})` : ''}
-                            </span>
-                          ) : (
-                            'Input Manual Dewan Guru'
-                          )}
-                        </td>
-                      </tr>
-                    ))
+                          </td>
+                          <td className="p-3">
+                            {rec.status === 'H' && (
+                              <span className="bg-emerald-100 text-emerald-800 border border-emerald-300 text-[10px] font-black px-2.5 py-0.5 rounded-full inline-flex items-center gap-1">
+                                <i className="fa-solid fa-check text-[9px]"></i> Hadir
+                              </span>
+                            )}
+                            {rec.status === 'S' && (
+                              <span className="bg-amber-100 text-amber-800 border border-amber-300 text-[10px] font-black px-2.5 py-0.5 rounded-full inline-flex items-center gap-1">
+                                <i className="fa-solid fa-bed text-[9px]"></i> Sakit
+                              </span>
+                            )}
+                            {rec.status === 'I' && (
+                              <span className="bg-blue-100 text-blue-800 border border-blue-300 text-[10px] font-black px-2.5 py-0.5 rounded-full inline-flex items-center gap-1">
+                                <i className="fa-solid fa-envelope-open-text text-[9px]"></i> Izin
+                              </span>
+                            )}
+                            {rec.status === 'A' && (
+                              <span className="bg-rose-100 text-rose-800 border border-rose-300 text-[10px] font-black px-2.5 py-0.5 rounded-full inline-flex items-center gap-1">
+                                <i className="fa-solid fa-xmark text-[9px]"></i> Alpha
+                              </span>
+                            )}
+                          </td>
+                          <td className="p-3 text-slate-500 font-mono text-[11px]">
+                            {rec.metode === 'QR_SCAN' ? (
+                              <span className="text-emerald-700 font-semibold inline-flex items-center gap-1">
+                                <i className="fa-solid fa-qrcode"></i> Scan QR Santri {rec.waktuScan ? `(${rec.waktuScan})` : ''}
+                              </span>
+                            ) : (
+                              'Input Manual Dewan Guru'
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })
                   )}
                 </tbody>
               </table>

@@ -121,7 +121,7 @@ export const LandingView: React.FC<LandingViewProps> = ({ cms, onSelectRole }) =
               </li>
               <li className="flex items-start">
                 <i className="fa-solid fa-circle-check text-emerald-600 mr-2 mt-0.5 shrink-0 text-[11px]"></i>
-                <span>Kelola Data Santri (12 Kelas Awaliyah & Wustho)</span>
+                <span>Kelola Data Santri (Formal 1–3 SMP, 1–3 MA & Non Formal)</span>
               </li>
               <li className="flex items-start">
                 <i className="fa-solid fa-circle-check text-emerald-600 mr-2 mt-0.5 shrink-0 text-[11px]"></i>
@@ -158,7 +158,7 @@ export const LandingView: React.FC<LandingViewProps> = ({ cms, onSelectRole }) =
             <ul className="text-xs text-slate-600 space-y-2.5 mb-7">
               <li className="flex items-start">
                 <i className="fa-solid fa-circle-check text-blue-600 mr-2 mt-0.5 shrink-0 text-[11px]"></i>
-                <span>Presensi Harian 12 Kelas & Scan QR (1x)</span>
+                <span>Presensi 3 Sesi (Formal & Non Formal) + Scan QR</span>
               </li>
               <li className="flex items-start font-semibold text-slate-800">
                 <i className="fa-solid fa-circle-check text-blue-600 mr-2 mt-0.5 shrink-0 text-[11px]"></i>

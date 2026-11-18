@@ -9,8 +9,22 @@ import {
   TingkatKelas,
   Gender,
   AdminCredentials,
+  SesiAbsen,
+  SESI_ABSEN_CONFIG,
+  ALL_SESI_ABSEN,
 } from '../types';
-import { ALL_CLASSES, SANTRIWAN_CLASSES, SANTRIWATI_CLASSES, defaultLandingCMS } from '../data/initialData';
+import {
+  FORMAL_SMP_SANTRIWAN,
+  FORMAL_MA_SANTRIWAN,
+  NON_FORMAL_SANTRIWAN,
+  FORMAL_SMP_SANTRIWATI,
+  FORMAL_MA_SANTRIWATI,
+  NON_FORMAL_SANTRIWATI,
+  ALL_FORMAL_CLASSES,
+  ALL_NON_FORMAL_CLASSES,
+  isFormalClass,
+  defaultLandingCMS,
+} from '../data/initialData';
 import { callGeminiService } from '../services/geminiService';
 import { PrintableReport } from './PrintableReport';
 import { PrintableQRCards } from './PrintableQRCards';
@@ -72,13 +86,17 @@ export const AdminView: React.FC<AdminViewProps> = ({
 
   // Filter states
   const [filterGender, setFilterGender] = useState<string>('ALL');
+  const [filterJalur, setFilterJalur] = useState<'ALL' | 'FORMAL' | 'NON_FORMAL'>('ALL');
   const [filterKelas, setFilterKelas] = useState<string>('ALL');
   const [rekapFilterKelas, setRekapFilterKelas] = useState<string>('ALL');
   const [rekapFilterGender, setRekapFilterGender] = useState<string>('ALL');
+  const [rekapFilterSesi, setRekapFilterSesi] = useState<string>('ALL');
   const [rekapMonth, setRekapMonth] = useState<string>(() => new Date().toISOString().slice(0, 7));
   const [rekapSearch, setRekapSearch] = useState<string>('');
   const [selectedSantriAbsenDetail, setSelectedSantriAbsenDetail] = useState<Santri | null>(null);
+  const [detailModalSesi, setDetailModalSesi] = useState<string>('ALL');
   const [pdfMonthFilter, setPdfMonthFilter] = useState<string>(() => new Date().toISOString().slice(0, 7));
+  const [pdfSesiFilter, setPdfSesiFilter] = useState<string>('ALL');
 
   // Santri Modal State
   const [isSantriModalOpen, setIsSantriModalOpen] = useState(false);
@@ -87,7 +105,8 @@ export const AdminView: React.FC<AdminViewProps> = ({
     nis: '',
     nama: '',
     jk: 'Santriwan' as Gender,
-    kelas: '1 Awaliyah (Santriwan)' as TingkatKelas,
+    kelas: '1 SMP (Santriwan)' as TingkatKelas,
+    kelasKedua: '' as TingkatKelas | '',
     wali: '',
     hp: '',
   });
@@ -201,7 +220,8 @@ export const AdminView: React.FC<AdminViewProps> = ({
       nis: `2024${String(santris.length + 1).padStart(2, '0')}`,
       nama: '',
       jk: 'Santriwan',
-      kelas: '1 Awaliyah (Santriwan)',
+      kelas: '1 SMP (Santriwan)',
+      kelasKedua: '',
       wali: '',
       hp: '',
     });
@@ -215,6 +235,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
       nama: s.nama,
       jk: s.jk,
       kelas: s.kelas,
+      kelasKedua: s.kelasKedua || '',
       wali: s.wali,
       hp: s.hp,
     });
@@ -223,15 +244,32 @@ export const AdminView: React.FC<AdminViewProps> = ({
 
   const handleSubmitSantri = (e: React.FormEvent) => {
     e.preventDefault();
+    const cleanedKelasKedua =
+      santriForm.kelasKedua && santriForm.kelasKedua !== santriForm.kelas
+        ? (santriForm.kelasKedua as TingkatKelas)
+        : undefined;
+
     if (editingSantri) {
       onEditSantri({
         ...editingSantri,
-        ...santriForm,
+        nis: santriForm.nis,
+        nama: santriForm.nama,
+        jk: santriForm.jk,
+        kelas: santriForm.kelas,
+        kelasKedua: cleanedKelasKedua,
+        wali: santriForm.wali,
+        hp: santriForm.hp,
       });
       onShowToast(`Data santri ${santriForm.nama} berhasil diperbarui!`, 'success');
     } else {
       onAddSantri({
-        ...santriForm,
+        nis: santriForm.nis,
+        nama: santriForm.nama,
+        jk: santriForm.jk,
+        kelas: santriForm.kelas,
+        kelasKedua: cleanedKelasKedua,
+        wali: santriForm.wali,
+        hp: santriForm.hp,
         passWali: 'wali123',
       });
       onShowToast(`Santri ${santriForm.nama} berhasil ditambahkan!`, 'success');
@@ -415,9 +453,15 @@ Buatkan draf balasan resmi, santun, ramah, dan Islami dari pihak Sekretariat Adm
   const handleGeneratePdfNarrative = async () => {
     setIsGeneratingNarrative(true);
     try {
+      const sesiInfoLabel =
+        pdfReportType === 'absen'
+          ? pdfSesiFilter === 'ALL'
+            ? 'Semua 3 Sesi (Subuh, Madrasah, Sorogan)'
+            : SESI_ABSEN_CONFIG[pdfSesiFilter as SesiAbsen]?.labelLengkap || pdfSesiFilter
+          : '';
       const prompt = `Anda adalah Sekretaris Pengurus Pondok Pesantren Miftahul Ulum Kalisat Jember.
 Buatkan 1 paragraf ringkasan narasi evaluasi perkembangan santri dan rekomendasi pembinaan yang santun, profesional, dan Islami untuk dilampirkan dalam Laporan Cetak PDF Resmi Pesantren.
-Parameter: Jenis Laporan: ${pdfReportType}, Periode Bulan: ${pdfReportType === 'absen' ? formatMonthYear(pdfMonthFilter) : 'Semua Periode'}, Filter Gender: ${pdfGenderFilter}, Filter Kelas: ${pdfClassFilter}.
+Parameter: Jenis Laporan: ${pdfReportType}, Periode Bulan: ${pdfReportType === 'absen' ? formatMonthYear(pdfMonthFilter) : 'Semua Periode'}${sesiInfoLabel ? `, Sesi Absen: ${sesiInfoLabel}` : ''}, Filter Gender: ${pdfGenderFilter}, Filter Kelas: ${pdfClassFilter}.
 Maksimal 3-4 kalimat.`;
 
       const result = await callGeminiService({
@@ -437,7 +481,16 @@ Maksimal 3-4 kalimat.`;
   // Filtered santri list
   let displaySantri = santris;
   if (filterGender !== 'ALL') displaySantri = displaySantri.filter((s) => s.jk === filterGender);
-  if (filterKelas !== 'ALL') displaySantri = displaySantri.filter((s) => s.kelas === filterKelas);
+  if (filterJalur === 'FORMAL') {
+    displaySantri = displaySantri.filter((s) => isFormalClass(s.kelas) || isFormalClass(s.kelasKedua));
+  } else if (filterJalur === 'NON_FORMAL') {
+    displaySantri = displaySantri.filter(
+      (s) => !isFormalClass(s.kelas) || (s.kelasKedua ? !isFormalClass(s.kelasKedua) : false)
+    );
+  }
+  if (filterKelas !== 'ALL') {
+    displaySantri = displaySantri.filter((s) => s.kelas === filterKelas || s.kelasKedua === filterKelas);
+  }
 
   // If previewing PDF report, show printable view
   if (isPreviewingReport) {
@@ -453,6 +506,7 @@ Maksimal 3-4 kalimat.`;
         pelanggarans={pelanggarans}
         onClose={() => setIsPreviewingReport(false)}
         selectedMonth={pdfMonthFilter}
+        selectedSesi={pdfSesiFilter}
       />
     );
   }
@@ -605,7 +659,9 @@ Maksimal 3-4 kalimat.`;
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
             <div>
               <h3 className="text-lg font-bold text-slate-800">Kelola Data Santri</h3>
-              <p className="text-xs text-slate-500">Daftar seluruh santri (12 Kelas Awaliyah & Wustho Putra/Putri)</p>
+              <p className="text-xs text-slate-500">
+                Daftar santri program Formal (1–3 SMP, 1–3 MA) &amp; Non Formal Putra/Putri
+              </p>
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
@@ -620,18 +676,48 @@ Maksimal 3-4 kalimat.`;
               </select>
 
               <select
+                value={filterJalur}
+                onChange={(e) => setFilterJalur(e.target.value as 'ALL' | 'FORMAL' | 'NON_FORMAL')}
+                className="bg-slate-50 border border-slate-300 rounded-xl text-xs py-2 px-3 focus:outline-none font-semibold cursor-pointer"
+              >
+                <option value="ALL">Semua Jalur (Formal &amp; Non Formal)</option>
+                <option value="FORMAL">Program Formal (1–3 SMP &amp; 1–3 MA)</option>
+                <option value="NON_FORMAL">Program Non Formal / Diniyah</option>
+              </select>
+
+              <select
                 value={filterKelas}
                 onChange={(e) => setFilterKelas(e.target.value)}
                 className="bg-slate-50 border border-slate-300 rounded-xl text-xs py-2 px-3 focus:outline-none font-semibold cursor-pointer"
               >
-                <option value="ALL">Semua Kelas (12 Kelas)</option>
-                <optgroup label="Santriwan (Putra)">
-                  {SANTRIWAN_CLASSES.map((c) => (
+                <option value="ALL">Semua Kelas (Formal &amp; Non Formal)</option>
+                <optgroup label="Formal - SMP (Putra)">
+                  {FORMAL_SMP_SANTRIWAN.map((c) => (
                     <option key={c} value={c}>{c}</option>
                   ))}
                 </optgroup>
-                <optgroup label="Santriwati (Putri)">
-                  {SANTRIWATI_CLASSES.map((c) => (
+                <optgroup label="Formal - MA (Putra)">
+                  {FORMAL_MA_SANTRIWAN.map((c) => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </optgroup>
+                <optgroup label="Non Formal / Diniyah (Putra)">
+                  {NON_FORMAL_SANTRIWAN.map((c) => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </optgroup>
+                <optgroup label="Formal - SMP (Putri)">
+                  {FORMAL_SMP_SANTRIWATI.map((c) => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </optgroup>
+                <optgroup label="Formal - MA (Putri)">
+                  {FORMAL_MA_SANTRIWATI.map((c) => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </optgroup>
+                <optgroup label="Non Formal / Diniyah (Putri)">
+                  {NON_FORMAL_SANTRIWATI.map((c) => (
                     <option key={c} value={c}>{c}</option>
                   ))}
                 </optgroup>
@@ -744,9 +830,28 @@ Maksimal 3-4 kalimat.`;
                         )}
                       </td>
                       <td className="p-3.5">
-                        <span className="bg-emerald-50 text-emerald-800 border border-emerald-200 text-[10px] font-bold px-2.5 py-0.5 rounded-full">
-                          {s.kelas}
-                        </span>
+                        <div className="flex flex-wrap gap-1">
+                          <span
+                            className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full border ${
+                              isFormalClass(s.kelas)
+                                ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                                : 'bg-amber-50 text-amber-800 border-amber-200'
+                            }`}
+                          >
+                            {s.kelas}
+                          </span>
+                          {s.kelasKedua && (
+                            <span
+                              className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full border ${
+                                isFormalClass(s.kelasKedua)
+                                  ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                                  : 'bg-amber-50 text-amber-800 border-amber-200'
+                              }`}
+                            >
+                              + {s.kelasKedua}
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="p-3.5">
                         <div className="font-medium text-slate-800">{s.wali}</div>
@@ -1143,7 +1248,10 @@ Maksimal 3-4 kalimat.`;
                   <tr key={s.id} className="hover:bg-slate-50 transition">
                     <td className="p-3.5 font-mono font-bold text-purple-700">{s.nis}</td>
                     <td className="p-3.5 font-bold text-slate-800">
-                      {s.nama} <span className="text-[11px] font-normal text-slate-400">({s.kelas})</span>
+                      {s.nama}{' '}
+                      <span className="text-[11px] font-normal text-slate-400">
+                        ({s.kelas}{s.kelasKedua ? ` + ${s.kelasKedua}` : ''})
+                      </span>
                     </td>
                     <td className="p-3.5 font-medium">{s.wali}</td>
                     <td className="p-3.5 font-mono">{s.hp}</td>
@@ -1217,7 +1325,7 @@ Maksimal 3-4 kalimat.`;
                         <td className="p-3.5 font-bold text-slate-800">{st?.nama || 'Santri'}</td>
                         <td className="p-3.5">
                           <span className="bg-slate-100 px-2 py-0.5 rounded text-[11px] font-semibold">
-                            {st?.kelas || '-'}
+                            {st ? `${st.kelas}${st.kelasKedua ? ` + ${st.kelasKedua}` : ''}` : '-'}
                           </span>
                         </td>
                         <td className="p-3.5 font-medium text-slate-800">{p.pelanggaran}</td>
@@ -1266,15 +1374,22 @@ Maksimal 3-4 kalimat.`;
       {/* TAB 6: REKAP PRESENSI BULANAN */}
       {activeTab === 'rekap' && (() => {
         const availableMonths = getAvailableMonths(absensis);
-        const effectiveAbsensis =
+        const monthAbsensisAllSesi =
           rekapMonth === 'ALL'
             ? absensis
             : absensis.filter((a) => a.tanggal.startsWith(rekapMonth));
 
+        const effectiveAbsensis =
+          rekapFilterSesi === 'ALL'
+            ? monthAbsensisAllSesi
+            : monthAbsensisAllSesi.filter((a) => (a.sesi || 'madrasah') === rekapFilterSesi);
+
         // Filter santri based on class, gender, and search query
         let filteredRekapSantri = santris;
         if (rekapFilterKelas !== 'ALL') {
-          filteredRekapSantri = filteredRekapSantri.filter((s) => s.kelas === rekapFilterKelas);
+          filteredRekapSantri = filteredRekapSantri.filter(
+            (s) => s.kelas === rekapFilterKelas || s.kelasKedua === rekapFilterKelas
+          );
         }
         if (rekapFilterGender !== 'ALL') {
           filteredRekapSantri = filteredRekapSantri.filter((s) => s.jk === rekapFilterGender);
@@ -1286,10 +1401,12 @@ Maksimal 3-4 kalimat.`;
           );
         }
 
+        const filteredSantriIdSet = new Set(filteredRekapSantri.map((s) => s.id));
+
         // Active meeting dates in the chosen month
         const activeDatesInPeriod = Array.from(new Set(effectiveAbsensis.map((a) => a.tanggal))).sort();
 
-        // Aggregate statistics for the filtered dataset in this month
+        // Aggregate statistics for the filtered dataset in this month & session
         let sumH = 0;
         let sumS = 0;
         let sumI = 0;
@@ -1315,16 +1432,25 @@ Maksimal 3-4 kalimat.`;
                     <i className="fa-solid fa-calendar-check"></i>
                   </div>
                   <div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                       <h3 className="text-base sm:text-lg font-bold text-slate-800">
                         Rekapitulasi Presensi Santri Per Bulan
                       </h3>
                       <span className="bg-emerald-100 text-emerald-800 text-[11px] font-bold px-2.5 py-0.5 rounded-full border border-emerald-200">
                         {formatMonthYear(rekapMonth)}
                       </span>
+                      {rekapFilterSesi !== 'ALL' && SESI_ABSEN_CONFIG[rekapFilterSesi as SesiAbsen] && (
+                        <span
+                          className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full border ${
+                            SESI_ABSEN_CONFIG[rekapFilterSesi as SesiAbsen].colorBadge
+                          }`}
+                        >
+                          {SESI_ABSEN_CONFIG[rekapFilterSesi as SesiAbsen].nomor}: {SESI_ABSEN_CONFIG[rekapFilterSesi as SesiAbsen].nama}
+                        </span>
+                      )}
                     </div>
                     <p className="text-xs text-slate-500 mt-0.5">
-                      Pilih bulan untuk melihat rincian Hadir (H), Sakit (S), Izin (I), Alpha (A), dan persentase kehadiran santri.
+                      Pantau 3 sesi absen harian (Subuh, Madrasah, Sorogan), rincian Hadir (H), Sakit (S), Izin (I), Alpha (A), dan grafik kedisiplinan bulanan.
                     </p>
                   </div>
                 </div>
@@ -1335,6 +1461,7 @@ Maksimal 3-4 kalimat.`;
                     onClick={() => {
                       setPdfReportType('absen');
                       setPdfMonthFilter(rekapMonth);
+                      setPdfSesiFilter(rekapFilterSesi);
                       setPdfClassFilter(rekapFilterKelas);
                       setPdfGenderFilter(rekapFilterGender);
                       setIsPreviewingReport(true);
@@ -1348,7 +1475,7 @@ Maksimal 3-4 kalimat.`;
               </div>
 
               {/* Filter Controls Bar */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 text-xs">
                 {/* Month Selector */}
                 <div>
                   <label className="block font-bold text-slate-700 mb-1 flex items-center gap-1.5">
@@ -1371,6 +1498,26 @@ Maksimal 3-4 kalimat.`;
                   </select>
                 </div>
 
+                {/* Sesi Filter */}
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1 flex items-center gap-1.5">
+                    <i className="fa-solid fa-clock text-emerald-700"></i>
+                    <span>Filter Sesi Absen:</span>
+                  </label>
+                  <select
+                    value={rekapFilterSesi}
+                    onChange={(e) => setRekapFilterSesi(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500 cursor-pointer"
+                  >
+                    <option value="ALL">Semua 3 Sesi (Gabungan)</option>
+                    {ALL_SESI_ABSEN.map((sKey) => (
+                      <option key={sKey} value={sKey}>
+                        {SESI_ABSEN_CONFIG[sKey].labelLengkap}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
                 {/* Class Filter */}
                 <div>
                   <label className="block font-bold text-slate-700 mb-1 flex items-center gap-1.5">
@@ -1382,14 +1529,34 @@ Maksimal 3-4 kalimat.`;
                     onChange={(e) => setRekapFilterKelas(e.target.value)}
                     className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 font-medium cursor-pointer focus:outline-none focus:ring-2 focus:ring-emerald-500"
                   >
-                    <option value="ALL">Semua Kelas (12 Kelas)</option>
-                    <optgroup label="Santriwan (Putra)">
-                      {SANTRIWAN_CLASSES.map((c) => (
+                    <option value="ALL">Semua Kelas (Formal &amp; Non Formal)</option>
+                    <optgroup label="Formal - SMP (Putra)">
+                      {FORMAL_SMP_SANTRIWAN.map((c) => (
                         <option key={c} value={c}>{c}</option>
                       ))}
                     </optgroup>
-                    <optgroup label="Santriwati (Putri)">
-                      {SANTRIWATI_CLASSES.map((c) => (
+                    <optgroup label="Formal - MA (Putra)">
+                      {FORMAL_MA_SANTRIWAN.map((c) => (
+                        <option key={c} value={c}>{c}</option>
+                      ))}
+                    </optgroup>
+                    <optgroup label="Non Formal / Diniyah (Putra)">
+                      {NON_FORMAL_SANTRIWAN.map((c) => (
+                        <option key={c} value={c}>{c}</option>
+                      ))}
+                    </optgroup>
+                    <optgroup label="Formal - SMP (Putri)">
+                      {FORMAL_SMP_SANTRIWATI.map((c) => (
+                        <option key={c} value={c}>{c}</option>
+                      ))}
+                    </optgroup>
+                    <optgroup label="Formal - MA (Putri)">
+                      {FORMAL_MA_SANTRIWATI.map((c) => (
+                        <option key={c} value={c}>{c}</option>
+                      ))}
+                    </optgroup>
+                    <optgroup label="Non Formal / Diniyah (Putri)">
+                      {NON_FORMAL_SANTRIWATI.map((c) => (
                         <option key={c} value={c}>{c}</option>
                       ))}
                     </optgroup>
@@ -1430,6 +1597,51 @@ Maksimal 3-4 kalimat.`;
               </div>
             </div>
 
+            {/* 3-Session Quick Summary Cards (Click to toggle filter) */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {ALL_SESI_ABSEN.map((sKey) => {
+                const info = SESI_ABSEN_CONFIG[sKey];
+                const sesiRecords = monthAbsensisAllSesi.filter(
+                  (a) => filteredSantriIdSet.has(a.santriId) && (a.sesi || 'madrasah') === sKey
+                );
+                const sesiH = sesiRecords.filter((a) => a.status === 'H').length;
+                const sesiTotal = sesiRecords.length;
+                const sesiRate = sesiTotal > 0 ? Math.round((sesiH / sesiTotal) * 100) : 0;
+                const isSelected = rekapFilterSesi === sKey;
+
+                return (
+                  <button
+                    key={sKey}
+                    type="button"
+                    onClick={() => setRekapFilterSesi(isSelected ? 'ALL' : sKey)}
+                    className={`p-3.5 rounded-2xl border text-left transition cursor-pointer flex items-center justify-between ${
+                      isSelected
+                        ? 'bg-emerald-50 border-emerald-500 ring-2 ring-emerald-200 shadow-xs'
+                        : 'bg-white border-slate-200 hover:border-emerald-300 shadow-xs'
+                    }`}
+                  >
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span
+                          className={`w-6 h-6 rounded-lg flex items-center justify-center text-xs font-black shrink-0 ${info.activeBg}`}
+                        >
+                          {info.nomor}
+                        </span>
+                        <span className="font-bold text-xs sm:text-sm text-slate-800 truncate">{info.nama}</span>
+                      </div>
+                      <p className="text-[11px] text-slate-500 mt-1 truncate">{info.keterangan}</p>
+                    </div>
+                    <div className="text-right shrink-0 ml-3">
+                      <span className="text-base font-black text-emerald-700 block">{sesiRate}%</span>
+                      <span className="text-[10px] font-semibold text-slate-500">
+                        {sesiH} Hadir / {sesiTotal} Sesi
+                      </span>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+
             {/* Monthly KPI Stats Cards */}
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
               <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-xs">
@@ -1441,25 +1653,25 @@ Maksimal 3-4 kalimat.`;
               <div className="bg-emerald-50/80 p-3.5 rounded-2xl border border-emerald-200 shadow-xs">
                 <span className="text-[10px] text-emerald-700 font-bold block uppercase">Hadir (H)</span>
                 <span className="text-xl font-black text-emerald-800">{sumH}</span>
-                <span className="text-[10px] text-emerald-600 block mt-0.5">Hari Kehadiran</span>
+                <span className="text-[10px] text-emerald-600 block mt-0.5">Sesi Kehadiran</span>
               </div>
 
               <div className="bg-amber-50/80 p-3.5 rounded-2xl border border-amber-200 shadow-xs">
                 <span className="text-[10px] text-amber-700 font-bold block uppercase">Sakit (S)</span>
                 <span className="text-xl font-black text-amber-800">{sumS}</span>
-                <span className="text-[10px] text-amber-600 block mt-0.5">Hari Izin Sakit</span>
+                <span className="text-[10px] text-amber-600 block mt-0.5">Sesi Izin Sakit</span>
               </div>
 
               <div className="bg-blue-50/80 p-3.5 rounded-2xl border border-blue-200 shadow-xs">
                 <span className="text-[10px] text-blue-700 font-bold block uppercase">Izin (I)</span>
                 <span className="text-xl font-black text-blue-800">{sumI}</span>
-                <span className="text-[10px] text-blue-600 block mt-0.5">Hari Izin Pulang/Lain</span>
+                <span className="text-[10px] text-blue-600 block mt-0.5">Sesi Izin Pulang/Lain</span>
               </div>
 
               <div className="bg-rose-50/80 p-3.5 rounded-2xl border border-rose-200 shadow-xs">
                 <span className="text-[10px] text-rose-700 font-bold block uppercase">Alpha (A)</span>
                 <span className="text-xl font-black text-rose-800">{sumA}</span>
-                <span className="text-[10px] text-rose-600 block mt-0.5">Hari Tanpa Keterangan</span>
+                <span className="text-[10px] text-rose-600 block mt-0.5">Sesi Tanpa Keterangan</span>
               </div>
 
               <div className="bg-gradient-to-br from-emerald-800 to-teal-900 text-white p-3.5 rounded-2xl shadow-xs">
@@ -1478,6 +1690,7 @@ Maksimal 3-4 kalimat.`;
               selectedMonth={rekapMonth}
               selectedClassFilter={rekapFilterKelas}
               selectedGenderFilter={rekapFilterGender}
+              selectedSesiFilter={rekapFilterSesi}
             />
 
             {/* Monthly Recap Table */}
@@ -1493,9 +1706,9 @@ Maksimal 3-4 kalimat.`;
                     <th className="p-3.5 text-center text-amber-700">Sakit (S)</th>
                     <th className="p-3.5 text-center text-blue-700">Izin (I)</th>
                     <th className="p-3.5 text-center text-rose-700">Alpha (A)</th>
-                    <th className="p-3.5 text-center text-slate-800">Total Hari</th>
+                    <th className="p-3.5 text-center text-slate-800">Total Sesi</th>
                     <th className="p-3.5 text-center text-emerald-800">% Kehadiran</th>
-                    <th className="p-3.5 text-center">Rincian Tanggal</th>
+                    <th className="p-3.5 text-center">Rincian 3 Sesi</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -1530,24 +1743,31 @@ Maksimal 3-4 kalimat.`;
                             )}
                           </td>
                           <td className="p-3.5">
-                            <span className="bg-slate-100 text-slate-700 text-[10px] font-semibold px-2 py-0.5 rounded-full border border-slate-200">
-                              {s.kelas}
-                            </span>
+                            <div className="flex flex-wrap gap-1">
+                              <span className="bg-slate-100 text-slate-700 text-[10px] font-semibold px-2 py-0.5 rounded-full border border-slate-200">
+                                {s.kelas}
+                              </span>
+                              {s.kelasKedua && (
+                                <span className="bg-amber-50 text-amber-800 text-[10px] font-semibold px-2 py-0.5 rounded-full border border-amber-200">
+                                  + {s.kelasKedua}
+                                </span>
+                              )}
+                            </div>
                           </td>
                           <td className="p-3.5 text-center font-bold text-emerald-700 bg-emerald-50/30">
-                            {h} Hari
+                            {h}x
                           </td>
                           <td className="p-3.5 text-center font-bold text-amber-700 bg-amber-50/30">
-                            {sc} Hari
+                            {sc}x
                           </td>
                           <td className="p-3.5 text-center font-bold text-blue-700 bg-blue-50/30">
-                            {i} Hari
+                            {i}x
                           </td>
                           <td className="p-3.5 text-center font-bold text-rose-700 bg-rose-50/30">
-                            {a} Hari
+                            {a}x
                           </td>
                           <td className="p-3.5 text-center font-medium text-slate-700">
-                            {totalDays} Hari
+                            {totalDays} Sesi
                           </td>
                           <td className="p-3.5 text-center">
                             <span
@@ -1565,7 +1785,10 @@ Maksimal 3-4 kalimat.`;
                           <td className="p-3.5 text-center">
                             <button
                               type="button"
-                              onClick={() => setSelectedSantriAbsenDetail(s)}
+                              onClick={() => {
+                                setDetailModalSesi(rekapFilterSesi);
+                                setSelectedSantriAbsenDetail(s);
+                              }}
                               className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-[11px] px-2.5 py-1 rounded-lg transition inline-flex items-center gap-1 cursor-pointer"
                             >
                               <i className="fa-solid fa-list-check text-emerald-700"></i>
@@ -1758,25 +1981,46 @@ Maksimal 3-4 kalimat.`;
             </div>
 
             {pdfReportType === 'absen' && (
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1 flex items-center gap-1.5">
-                  <i className="fa-solid fa-calendar-days text-emerald-700"></i>
-                  <span>Pilih Periode Bulan Rekap Presensi:</span>
-                </label>
-                <select
-                  value={pdfMonthFilter}
-                  onChange={(e) => setPdfMonthFilter(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl p-3 focus:outline-none font-bold text-emerald-900 cursor-pointer"
-                >
-                  <optgroup label="Pilihan Bulan Rekap">
-                    {getAvailableMonths(absensis).map((ym) => (
-                      <option key={ym} value={ym}>
-                        {formatMonthYear(ym)}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1 flex items-center gap-1.5">
+                    <i className="fa-solid fa-calendar-days text-emerald-700"></i>
+                    <span>Pilih Periode Bulan Rekap Presensi:</span>
+                  </label>
+                  <select
+                    value={pdfMonthFilter}
+                    onChange={(e) => setPdfMonthFilter(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl p-3 focus:outline-none font-bold text-emerald-900 cursor-pointer"
+                  >
+                    <optgroup label="Pilihan Bulan Rekap">
+                      {getAvailableMonths(absensis).map((ym) => (
+                        <option key={ym} value={ym}>
+                          {formatMonthYear(ym)}
+                        </option>
+                      ))}
+                    </optgroup>
+                    <option value="ALL">Semua Bulan (Sepanjang Waktu)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1 flex items-center gap-1.5">
+                    <i className="fa-solid fa-clock text-emerald-700"></i>
+                    <span>Pilih Sesi Absen:</span>
+                  </label>
+                  <select
+                    value={pdfSesiFilter}
+                    onChange={(e) => setPdfSesiFilter(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl p-3 focus:outline-none font-bold text-slate-800 cursor-pointer"
+                  >
+                    <option value="ALL">Semua 3 Sesi (Subuh, Madrasah, Sorogan)</option>
+                    {ALL_SESI_ABSEN.map((sKey) => (
+                      <option key={sKey} value={sKey}>
+                        {SESI_ABSEN_CONFIG[sKey].labelLengkap}
                       </option>
                     ))}
-                  </optgroup>
-                  <option value="ALL">Semua Bulan (Sepanjang Waktu)</option>
-                </select>
+                  </select>
+                </div>
               </div>
             )}
 
@@ -1801,14 +2045,34 @@ Maksimal 3-4 kalimat.`;
                   onChange={(e) => setPdfClassFilter(e.target.value)}
                   className="w-full bg-slate-50 border border-slate-300 rounded-xl p-3 focus:outline-none cursor-pointer"
                 >
-                  <option value="ALL">Semua 12 Kelas</option>
-                  <optgroup label="Santriwan (Putra)">
-                    {SANTRIWAN_CLASSES.map((c) => (
+                  <option value="ALL">Semua Kelas (Formal &amp; Non Formal)</option>
+                  <optgroup label="Formal - SMP (Putra)">
+                    {FORMAL_SMP_SANTRIWAN.map((c) => (
                       <option key={c} value={c}>{c}</option>
                     ))}
                   </optgroup>
-                  <optgroup label="Santriwati (Putri)">
-                    {SANTRIWATI_CLASSES.map((c) => (
+                  <optgroup label="Formal - MA (Putra)">
+                    {FORMAL_MA_SANTRIWAN.map((c) => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                  </optgroup>
+                  <optgroup label="Non Formal / Diniyah (Putra)">
+                    {NON_FORMAL_SANTRIWAN.map((c) => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                  </optgroup>
+                  <optgroup label="Formal - SMP (Putri)">
+                    {FORMAL_SMP_SANTRIWATI.map((c) => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                  </optgroup>
+                  <optgroup label="Formal - MA (Putri)">
+                    {FORMAL_MA_SANTRIWATI.map((c) => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                  </optgroup>
+                  <optgroup label="Non Formal / Diniyah (Putri)">
+                    {NON_FORMAL_SANTRIWATI.map((c) => (
                       <option key={c} value={c}>{c}</option>
                     ))}
                   </optgroup>
@@ -2124,16 +2388,16 @@ Maksimal 3-4 kalimat.`;
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block font-semibold text-slate-700 mb-1">Jenis Kelamin:</label>
                   <select
                     value={santriForm.jk}
                     onChange={(e) => {
                       const newJk = e.target.value as Gender;
-                      const defaultClass =
-                        newJk === 'Santriwan' ? '1 Awaliyah (Santriwan)' : '1 Awaliyah (Santriwati)';
-                      setSantriForm({ ...santriForm, jk: newJk, kelas: defaultClass });
+                      const defaultClass: TingkatKelas =
+                        newJk === 'Santriwan' ? '1 SMP (Santriwan)' : '1 SMP (Santriwati)';
+                      setSantriForm({ ...santriForm, jk: newJk, kelas: defaultClass, kelasKedua: '' });
                     }}
                     className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 cursor-pointer"
                   >
@@ -2143,17 +2407,113 @@ Maksimal 3-4 kalimat.`;
                 </div>
 
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Tingkat Kelas (12 Kelas):</label>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    Kelas Utama (Formal / Non Formal):
+                  </label>
                   <select
                     value={santriForm.kelas}
-                    onChange={(e) => setSantriForm({ ...santriForm, kelas: e.target.value as TingkatKelas })}
+                    onChange={(e) => {
+                      const newKelas = e.target.value as TingkatKelas;
+                      setSantriForm((prev) => ({
+                        ...prev,
+                        kelas: newKelas,
+                        kelasKedua: prev.kelasKedua === newKelas ? '' : prev.kelasKedua,
+                      }));
+                    }}
                     className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 cursor-pointer font-medium"
                   >
-                    {(santriForm.jk === 'Santriwan' ? SANTRIWAN_CLASSES : SANTRIWATI_CLASSES).map((c) => (
-                      <option key={c} value={c}>{c}</option>
-                    ))}
+                    {santriForm.jk === 'Santriwan' ? (
+                      <>
+                        <optgroup label="Formal - SMP (1, 2, 3)">
+                          {FORMAL_SMP_SANTRIWAN.map((c) => (
+                            <option key={c} value={c}>{c}</option>
+                          ))}
+                        </optgroup>
+                        <optgroup label="Formal - MA (1, 2, 3)">
+                          {FORMAL_MA_SANTRIWAN.map((c) => (
+                            <option key={c} value={c}>{c}</option>
+                          ))}
+                        </optgroup>
+                        <optgroup label="Non Formal / Diniyah">
+                          {NON_FORMAL_SANTRIWAN.map((c) => (
+                            <option key={c} value={c}>{c}</option>
+                          ))}
+                        </optgroup>
+                      </>
+                    ) : (
+                      <>
+                        <optgroup label="Formal - SMP (1, 2, 3)">
+                          {FORMAL_SMP_SANTRIWATI.map((c) => (
+                            <option key={c} value={c}>{c}</option>
+                          ))}
+                        </optgroup>
+                        <optgroup label="Formal - MA (1, 2, 3)">
+                          {FORMAL_MA_SANTRIWATI.map((c) => (
+                            <option key={c} value={c}>{c}</option>
+                          ))}
+                        </optgroup>
+                        <optgroup label="Non Formal / Diniyah">
+                          {NON_FORMAL_SANTRIWATI.map((c) => (
+                            <option key={c} value={c}>{c}</option>
+                          ))}
+                        </optgroup>
+                      </>
+                    )}
                   </select>
                 </div>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">
+                  Kelas Pendamping / Jalur Kedua (Opsional — Formal / Non Formal):
+                </label>
+                <select
+                  value={santriForm.kelasKedua}
+                  onChange={(e) => setSantriForm({ ...santriForm, kelasKedua: e.target.value as TingkatKelas | '' })}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 cursor-pointer font-medium"
+                >
+                  <option value="">-- Tidak Ada (Hanya Mengikuti 1 Kelas) --</option>
+                  {santriForm.jk === 'Santriwan' ? (
+                    <>
+                      <optgroup label="Non Formal / Diniyah">
+                        {NON_FORMAL_SANTRIWAN.filter((c) => c !== santriForm.kelas).map((c) => (
+                          <option key={c} value={c}>{c}</option>
+                        ))}
+                      </optgroup>
+                      <optgroup label="Formal - SMP (1, 2, 3)">
+                        {FORMAL_SMP_SANTRIWAN.filter((c) => c !== santriForm.kelas).map((c) => (
+                          <option key={c} value={c}>{c}</option>
+                        ))}
+                      </optgroup>
+                      <optgroup label="Formal - MA (1, 2, 3)">
+                        {FORMAL_MA_SANTRIWAN.filter((c) => c !== santriForm.kelas).map((c) => (
+                          <option key={c} value={c}>{c}</option>
+                        ))}
+                      </optgroup>
+                    </>
+                  ) : (
+                    <>
+                      <optgroup label="Non Formal / Diniyah">
+                        {NON_FORMAL_SANTRIWATI.filter((c) => c !== santriForm.kelas).map((c) => (
+                          <option key={c} value={c}>{c}</option>
+                        ))}
+                      </optgroup>
+                      <optgroup label="Formal - SMP (1, 2, 3)">
+                        {FORMAL_SMP_SANTRIWATI.filter((c) => c !== santriForm.kelas).map((c) => (
+                          <option key={c} value={c}>{c}</option>
+                        ))}
+                      </optgroup>
+                      <optgroup label="Formal - MA (1, 2, 3)">
+                        {FORMAL_MA_SANTRIWATI.filter((c) => c !== santriForm.kelas).map((c) => (
+                          <option key={c} value={c}>{c}</option>
+                        ))}
+                      </optgroup>
+                    </>
+                  )}
+                </select>
+                <p className="text-[10px] text-slate-400 mt-1">
+                  Pilih kelas pendamping jika santri mengikuti program Formal (SMP/MA) sekaligus Non Formal.
+                </p>
               </div>
 
               <div>
@@ -2278,16 +2638,70 @@ Maksimal 3-4 kalimat.`;
 
               {/* Interactive Class Allocation Checkboxes */}
               <div>
-                <label className="block font-semibold text-slate-700 mb-1">
-                  Alokasi Kelas Mengajar (Centang Kelas Yang Diampu):
-                </label>
+                <div className="flex flex-wrap items-center justify-between gap-1.5 mb-1.5">
+                  <label className="font-semibold text-slate-700">
+                    Alokasi Kelas Mengajar (Formal &amp; Non Formal):
+                  </label>
+                  <div className="flex flex-wrap gap-1">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setGuruForm((prev) => ({
+                          ...prev,
+                          assignedClasses: Array.from(new Set([...prev.assignedClasses, ...ALL_FORMAL_CLASSES])),
+                        }))
+                      }
+                      className="text-[10px] font-bold bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 px-2 py-0.5 rounded-lg cursor-pointer"
+                    >
+                      + Semua Formal
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setGuruForm((prev) => ({
+                          ...prev,
+                          assignedClasses: Array.from(new Set([...prev.assignedClasses, ...ALL_NON_FORMAL_CLASSES])),
+                        }))
+                      }
+                      className="text-[10px] font-bold bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 px-2 py-0.5 rounded-lg cursor-pointer"
+                    >
+                      + Semua Non Formal
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setGuruForm((prev) => ({ ...prev, assignedClasses: [] }))}
+                      className="text-[10px] font-bold bg-slate-100 hover:bg-slate-200 text-slate-600 px-2 py-0.5 rounded-lg cursor-pointer"
+                    >
+                      Reset
+                    </button>
+                  </div>
+                </div>
                 <div className="bg-slate-50 border border-slate-300 rounded-xl p-3 space-y-3">
                   <div>
-                    <span className="font-bold text-[11px] text-blue-800 block border-b border-blue-200 pb-1 mb-1.5 flex items-center gap-1">
+                    <span className="font-bold text-[11px] text-blue-800 block border-b border-blue-200 pb-1 mb-2 flex items-center gap-1">
                       <i className="fa-solid fa-mars"></i> Santriwan (Putra):
                     </span>
+                    <p className="text-[10px] font-bold text-emerald-800 uppercase mb-1">
+                      Formal (1–3 SMP &amp; 1–3 MA)
+                    </p>
+                    <div className="grid grid-cols-2 gap-1.5 text-[11px] mb-2">
+                      {[...FORMAL_SMP_SANTRIWAN, ...FORMAL_MA_SANTRIWAN].map((cls) => (
+                        <label key={cls} className="flex items-center space-x-1.5 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={guruForm.assignedClasses.includes(cls)}
+                            onChange={() => handleToggleGuruClass(cls)}
+                            className="rounded text-blue-600 focus:ring-blue-500"
+                          />
+                          <span>{cls}</span>
+                        </label>
+                      ))}
+                    </div>
+                    <p className="text-[10px] font-bold text-amber-800 uppercase mb-1">
+                      Non Formal (Awaliyah, Wustho &amp; Non Formal)
+                    </p>
                     <div className="grid grid-cols-2 gap-1.5 text-[11px]">
-                      {SANTRIWAN_CLASSES.map((cls) => (
+                      {NON_FORMAL_SANTRIWAN.map((cls) => (
                         <label key={cls} className="flex items-center space-x-1.5 cursor-pointer">
                           <input
                             type="checkbox"
@@ -2302,11 +2716,30 @@ Maksimal 3-4 kalimat.`;
                   </div>
 
                   <div>
-                    <span className="font-bold text-[11px] text-purple-800 block border-b border-purple-200 pb-1 mb-1.5 flex items-center gap-1">
+                    <span className="font-bold text-[11px] text-purple-800 block border-b border-purple-200 pb-1 mb-2 flex items-center gap-1">
                       <i className="fa-solid fa-venus"></i> Santriwati (Putri):
                     </span>
+                    <p className="text-[10px] font-bold text-emerald-800 uppercase mb-1">
+                      Formal (1–3 SMP &amp; 1–3 MA)
+                    </p>
+                    <div className="grid grid-cols-2 gap-1.5 text-[11px] mb-2">
+                      {[...FORMAL_SMP_SANTRIWATI, ...FORMAL_MA_SANTRIWATI].map((cls) => (
+                        <label key={cls} className="flex items-center space-x-1.5 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={guruForm.assignedClasses.includes(cls)}
+                            onChange={() => handleToggleGuruClass(cls)}
+                            className="rounded text-purple-600 focus:ring-purple-500"
+                          />
+                          <span>{cls}</span>
+                        </label>
+                      ))}
+                    </div>
+                    <p className="text-[10px] font-bold text-amber-800 uppercase mb-1">
+                      Non Formal (Awaliyah, Wustho &amp; Non Formal)
+                    </p>
                     <div className="grid grid-cols-2 gap-1.5 text-[11px]">
-                      {SANTRIWATI_CLASSES.map((cls) => (
+                      {NON_FORMAL_SANTRIWATI.map((cls) => (
                         <label key={cls} className="flex items-center space-x-1.5 cursor-pointer">
                           <input
                             type="checkbox"
@@ -2405,11 +2838,17 @@ Maksimal 3-4 kalimat.`;
       {/* MODAL RINCIAN TANGGAL PRESENSI SANTRI BULAN INI */}
       {selectedSantriAbsenDetail && (() => {
         const s = selectedSantriAbsenDetail;
-        const studentAbsens = absensis
-          .filter(
-            (a) => a.santriId === s.id && (rekapMonth === 'ALL' || a.tanggal.startsWith(rekapMonth))
-          )
-          .sort((a, b) => a.tanggal.localeCompare(b.tanggal));
+        const allPeriodAbsens = absensis.filter(
+          (a) => a.santriId === s.id && (rekapMonth === 'ALL' || a.tanggal.startsWith(rekapMonth))
+        );
+        const studentAbsens = allPeriodAbsens
+          .filter((a) => detailModalSesi === 'ALL' || (a.sesi || 'madrasah') === detailModalSesi)
+          .sort((a, b) => {
+            const dateCmp = a.tanggal.localeCompare(b.tanggal);
+            if (dateCmp !== 0) return dateCmp;
+            const order: Record<SesiAbsen, number> = { subuh: 1, madrasah: 2, sorogan: 3 };
+            return (order[a.sesi || 'madrasah'] || 2) - (order[b.sesi || 'madrasah'] || 2);
+          });
 
         const hCount = studentAbsens.filter((a) => a.status === 'H').length;
         const sCount = studentAbsens.filter((a) => a.status === 'S').length;
@@ -2436,7 +2875,7 @@ Maksimal 3-4 kalimat.`;
                   </div>
                   <div>
                     <h3 className="text-base font-bold text-slate-800">
-                      Rincian Presensi Santri
+                      Rincian Presensi 3 Sesi Santri
                     </h3>
                     <p className="text-xs text-slate-500">
                       Periode: <strong className="text-emerald-800">{formatMonthYear(rekapMonth)}</strong>
@@ -2455,23 +2894,57 @@ Maksimal 3-4 kalimat.`;
                   </div>
                 </div>
 
+                {/* Session Filter Pills inside Modal */}
+                <div className="flex flex-wrap gap-1.5 mt-3">
+                  <button
+                    type="button"
+                    onClick={() => setDetailModalSesi('ALL')}
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition cursor-pointer ${
+                      detailModalSesi === 'ALL'
+                        ? 'bg-emerald-800 text-white border-emerald-800'
+                        : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+                    }`}
+                  >
+                    Semua ({allPeriodAbsens.length})
+                  </button>
+                  {ALL_SESI_ABSEN.map((sKey) => {
+                    const info = SESI_ABSEN_CONFIG[sKey];
+                    const count = allPeriodAbsens.filter((a) => (a.sesi || 'madrasah') === sKey).length;
+                    const active = detailModalSesi === sKey;
+                    return (
+                      <button
+                        key={sKey}
+                        type="button"
+                        onClick={() => setDetailModalSesi(sKey)}
+                        className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition cursor-pointer ${
+                          active
+                            ? `${info.activeBg} border-transparent`
+                            : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+                        }`}
+                      >
+                        {info.nomor}: {info.nama.replace('Absen ', '')} ({count})
+                      </button>
+                    );
+                  })}
+                </div>
+
                 {/* Counter Badges */}
                 <div className="grid grid-cols-4 gap-2 mt-3 text-center text-xs">
                   <div className="bg-emerald-50 border border-emerald-200 p-2 rounded-xl">
                     <span className="text-[10px] text-emerald-700 font-bold block">Hadir</span>
-                    <span className="text-base font-black text-emerald-800">{hCount} Hari</span>
+                    <span className="text-base font-black text-emerald-800">{hCount} Sesi</span>
                   </div>
                   <div className="bg-amber-50 border border-amber-200 p-2 rounded-xl">
                     <span className="text-[10px] text-amber-700 font-bold block">Sakit</span>
-                    <span className="text-base font-black text-amber-800">{sCount} Hari</span>
+                    <span className="text-base font-black text-amber-800">{sCount} Sesi</span>
                   </div>
                   <div className="bg-blue-50 border border-blue-200 p-2 rounded-xl">
                     <span className="text-[10px] text-blue-700 font-bold block">Izin</span>
-                    <span className="text-base font-black text-blue-800">{iCount} Hari</span>
+                    <span className="text-base font-black text-blue-800">{iCount} Sesi</span>
                   </div>
                   <div className="bg-rose-50 border border-rose-200 p-2 rounded-xl">
                     <span className="text-[10px] text-rose-700 font-bold block">Alpha</span>
-                    <span className="text-base font-black text-rose-800">{aCount} Hari</span>
+                    <span className="text-base font-black text-rose-800">{aCount} Sesi</span>
                   </div>
                 </div>
               </div>
@@ -2482,58 +2955,69 @@ Maksimal 3-4 kalimat.`;
                   <div className="text-center py-8 text-slate-400 space-y-1">
                     <i className="fa-solid fa-calendar-xmark text-3xl text-slate-300 block mb-1"></i>
                     <p className="font-semibold text-slate-600">Belum Ada Catatan Presensi</p>
-                    <p className="text-[11px] text-slate-400">Tidak ada riwayat presensi yang tercatat untuk santri ini pada periode {formatMonthYear(rekapMonth)}.</p>
+                    <p className="text-[11px] text-slate-400">Tidak ada riwayat presensi yang tercatat untuk santri ini pada filter yang dipilih.</p>
                   </div>
                 ) : (
-                  studentAbsens.map((rec, idx) => (
-                    <div
-                      key={rec.id || idx}
-                      className="p-3 bg-slate-50 hover:bg-slate-100 rounded-xl border border-slate-200 flex items-center justify-between transition"
-                    >
-                      <div className="flex items-center space-x-2.5">
-                        <div className="w-6 h-6 rounded-lg bg-white border border-slate-200 flex items-center justify-center font-bold text-[10px] text-slate-600">
-                          {idx + 1}
-                        </div>
-                        <div>
-                          <span className="font-bold text-slate-800 block text-xs">
-                            {formatIndonesianDate(rec.tanggal)}
-                          </span>
-                          <span className="text-[10px] text-slate-400 font-mono">
-                            {rec.metode === 'QR_SCAN' ? (
-                              <span className="text-emerald-700 font-semibold inline-flex items-center gap-1">
-                                <i className="fa-solid fa-qrcode text-[9px]"></i>Scan QR Presensi {rec.waktuScan ? `(${rec.waktuScan})` : ''}
+                  studentAbsens.map((rec, idx) => {
+                    const sesiInfo = SESI_ABSEN_CONFIG[(rec.sesi || 'madrasah') as SesiAbsen];
+                    return (
+                      <div
+                        key={rec.id || idx}
+                        className="p-3 bg-slate-50 hover:bg-slate-100 rounded-xl border border-slate-200 flex items-center justify-between gap-2 transition"
+                      >
+                        <div className="flex items-center space-x-2.5 min-w-0">
+                          <div className="w-6 h-6 rounded-lg bg-white border border-slate-200 flex items-center justify-center font-bold text-[10px] text-slate-600 shrink-0">
+                            {idx + 1}
+                          </div>
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <span className="font-bold text-slate-800 text-xs">
+                                {formatIndonesianDate(rec.tanggal)}
                               </span>
-                            ) : (
-                              'Input Manual Dewan Guru'
-                            )}
-                          </span>
+                              <span
+                                className={`text-[9px] font-bold px-2 py-0.5 rounded-full border inline-flex items-center gap-1 ${sesiInfo.colorBadge}`}
+                              >
+                                <i className={`${sesiInfo.icon} text-[8px]`}></i>
+                                <span>{sesiInfo.nomor}: {sesiInfo.nama}</span>
+                              </span>
+                            </div>
+                            <span className="text-[10px] text-slate-400 font-mono block mt-0.5">
+                              {rec.metode === 'QR_SCAN' ? (
+                                <span className="text-emerald-700 font-semibold inline-flex items-center gap-1">
+                                  <i className="fa-solid fa-qrcode text-[9px]"></i>Scan QR Presensi {rec.waktuScan ? `(${rec.waktuScan})` : ''}
+                                </span>
+                              ) : (
+                                'Input Manual Dewan Guru'
+                              )}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="text-right shrink-0">
+                          {rec.status === 'H' && (
+                            <span className="bg-emerald-100 text-emerald-800 border border-emerald-300 text-[10px] font-black px-2.5 py-0.5 rounded-full inline-flex items-center gap-1">
+                              <i className="fa-solid fa-check text-[9px]"></i>Hadir
+                            </span>
+                          )}
+                          {rec.status === 'S' && (
+                            <span className="bg-amber-100 text-amber-800 border border-amber-300 text-[10px] font-black px-2.5 py-0.5 rounded-full inline-flex items-center gap-1">
+                              <i className="fa-solid fa-bed text-[9px]"></i>Sakit
+                            </span>
+                          )}
+                          {rec.status === 'I' && (
+                            <span className="bg-blue-100 text-blue-800 border border-blue-300 text-[10px] font-black px-2.5 py-0.5 rounded-full inline-flex items-center gap-1">
+                              <i className="fa-solid fa-envelope-open-text text-[9px]"></i>Izin
+                            </span>
+                          )}
+                          {rec.status === 'A' && (
+                            <span className="bg-rose-100 text-rose-800 border border-rose-300 text-[10px] font-black px-2.5 py-0.5 rounded-full inline-flex items-center gap-1">
+                              <i className="fa-solid fa-xmark text-[9px]"></i>Alpha
+                            </span>
+                          )}
                         </div>
                       </div>
-
-                      <div className="text-right">
-                        {rec.status === 'H' && (
-                          <span className="bg-emerald-100 text-emerald-800 border border-emerald-300 text-[10px] font-black px-2.5 py-0.5 rounded-full inline-flex items-center gap-1">
-                            <i className="fa-solid fa-check text-[9px]"></i>Hadir
-                          </span>
-                        )}
-                        {rec.status === 'S' && (
-                          <span className="bg-amber-100 text-amber-800 border border-amber-300 text-[10px] font-black px-2.5 py-0.5 rounded-full inline-flex items-center gap-1">
-                            <i className="fa-solid fa-bed text-[9px]"></i>Sakit
-                          </span>
-                        )}
-                        {rec.status === 'I' && (
-                          <span className="bg-blue-100 text-blue-800 border border-blue-300 text-[10px] font-black px-2.5 py-0.5 rounded-full inline-flex items-center gap-1">
-                            <i className="fa-solid fa-envelope-open-text text-[9px]"></i>Izin
-                          </span>
-                        )}
-                        {rec.status === 'A' && (
-                          <span className="bg-rose-100 text-rose-800 border border-rose-300 text-[10px] font-black px-2.5 py-0.5 rounded-full inline-flex items-center gap-1">
-                            <i className="fa-solid fa-xmark text-[9px]"></i>Alpha
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  ))
+                    );
+                  })
                 )}
               </div>
 

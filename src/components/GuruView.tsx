@@ -1,14 +1,34 @@
 import React, { useState, useEffect } from 'react';
-import { Guru, Santri, AbsensiRecord, PelanggaranRecord, ChatMessage, TingkatKelas, PelanggaranKategori } from '../types';
+import {
+  Guru,
+  Santri,
+  AbsensiRecord,
+  PelanggaranRecord,
+  ChatMessage,
+  TingkatKelas,
+  PelanggaranKategori,
+  SesiAbsen,
+  SESI_ABSEN_CONFIG,
+  ALL_SESI_ABSEN,
+} from '../types';
 import { callGeminiService } from '../services/geminiService';
 import { QrAttendanceScanner } from './QrAttendanceScanner';
-import { formatMonthYear, getAvailableMonths } from '../utils/dateHelper';
+import { formatMonthYear, getAvailableMonths, getDefaultSesiNow } from '../utils/dateHelper';
 
 interface GuruViewProps {
   currentGuru: Guru;
   santris: Santri[];
   absensis: AbsensiRecord[];
-  onSaveBatchAbsensi: (records: { santriId: number; tanggal: string; status: 'H' | 'S' | 'I' | 'A' }[]) => void;
+  onSaveBatchAbsensi: (
+    records: {
+      santriId: number;
+      tanggal: string;
+      status: 'H' | 'S' | 'I' | 'A';
+      sesi?: SesiAbsen;
+      waktuScan?: string;
+      metode?: 'QR_SCAN' | 'MANUAL';
+    }[]
+  ) => void;
   pelanggarans: PelanggaranRecord[];
   onAddPelanggaran: (p: Omit<PelanggaranRecord, 'id'>) => void;
   messages: ChatMessage[];
@@ -35,9 +55,24 @@ export const GuruView: React.FC<GuruViewProps> = ({
   const [activeTab, setActiveTab] = useState<GuruTab>('absen');
 
   const todayStr = new Date().toISOString().split('T')[0];
+  const [selectedSesi, setSelectedSesi] = useState<SesiAbsen>(() => getDefaultSesiNow());
 
-  const handleRecordSingleAttendance = (santriId: number, tanggal: string, status: 'H' | 'S' | 'I' | 'A') => {
-    onSaveBatchAbsensi([{ santriId, tanggal, status }]);
+  const handleRecordSingleAttendance = (
+    santriId: number,
+    tanggal: string,
+    status: 'H' | 'S' | 'I' | 'A',
+    sesi?: SesiAbsen
+  ) => {
+    onSaveBatchAbsensi([
+      {
+        santriId,
+        tanggal,
+        status,
+        sesi: sesi || selectedSesi,
+        waktuScan: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
+        metode: 'QR_SCAN',
+      },
+    ]);
   };
 
   // Attendance state
@@ -49,6 +84,7 @@ export const GuruView: React.FC<GuruViewProps> = ({
   // View mode for Guru attendance: input harian vs rekap bulanan
   const [absenViewMode, setAbsenViewMode] = useState<'harian' | 'rekap_bulan'>('harian');
   const [guruRekapMonth, setGuruRekapMonth] = useState<string>(() => new Date().toISOString().slice(0, 7));
+  const [guruRekapSesi, setGuruRekapSesi] = useState<string>('ALL');
   const availableMonths = getAvailableMonths(absensis);
 
   // Pelanggaran form state
@@ -82,16 +118,21 @@ export const GuruView: React.FC<GuruViewProps> = ({
   }, [assigned, selectedClass]);
 
   // Sync attendance radio buttons when class or date changes
-  const classSantris = santris.filter((s) => s.kelas === selectedClass);
+  const classSantris = santris.filter((s) => s.kelas === selectedClass || s.kelasKedua === selectedClass);
 
   useEffect(() => {
     const map: Record<number, 'H' | 'S' | 'I' | 'A'> = {};
     classSantris.forEach((s) => {
-      const existing = absensis.find((a) => a.santriId === s.id && a.tanggal === absenTanggal);
+      const existing = absensis.find(
+        (a) =>
+          a.santriId === s.id &&
+          a.tanggal === absenTanggal &&
+          (a.sesi || 'madrasah') === selectedSesi
+      );
       map[s.id] = existing ? existing.status : 'H';
     });
     setAttendanceMap(map);
-  }, [selectedClass, absenTanggal, santris, absensis]);
+  }, [selectedClass, absenTanggal, selectedSesi, santris, absensis]);
 
   const handleStatusChange = (santriId: number, status: 'H' | 'S' | 'I' | 'A') => {
     setAttendanceMap((prev) => ({ ...prev, [santriId]: status }));
@@ -103,7 +144,10 @@ export const GuruView: React.FC<GuruViewProps> = ({
       map[s.id] = status;
     });
     setAttendanceMap(map);
-    onShowToast(`Seluruh santri di kelas ${selectedClass} di-set ${status}`, 'info');
+    onShowToast(
+      `Seluruh santri di kelas ${selectedClass} di-set ${status} untuk [${SESI_ABSEN_CONFIG[selectedSesi].nama}]`,
+      'info'
+    );
   };
 
   const handleSaveAbsensi = () => {
@@ -119,11 +163,16 @@ export const GuruView: React.FC<GuruViewProps> = ({
     const records = classSantris.map((s) => ({
       santriId: s.id,
       tanggal: absenTanggal,
+      sesi: selectedSesi,
       status: attendanceMap[s.id] || 'H',
+      metode: 'MANUAL' as const,
     }));
 
     onSaveBatchAbsensi(records);
-    onShowToast(`Presensi kelas ${selectedClass} tanggal ${absenTanggal} berhasil disimpan & disinkronkan!`, 'success');
+    onShowToast(
+      `Presensi kelas ${selectedClass} [${SESI_ABSEN_CONFIG[selectedSesi].nama}] tanggal ${absenTanggal} berhasil disimpan & disinkronkan!`,
+      'success'
+    );
   };
 
   // Pelanggaran AI recommendation
@@ -372,6 +421,70 @@ Buatkan draf balasan ramah, santun, Islami, dan informatif dari pihak Ustadz Pen
 
               {absenViewMode === 'harian' ? (
                 <>
+                  {/* Pilihan 3 Sesi Absen */}
+                  <div className="bg-white p-4 rounded-2xl border border-slate-200/90 shadow-xs space-y-2.5">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 border-b border-slate-100 pb-2">
+                      <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                        <i className="fa-solid fa-clock-rotate-left text-blue-600"></i>
+                        <span>Pilih Sesi Presensi Harian:</span>
+                      </span>
+                      <span className="text-[11px] font-semibold text-slate-500">
+                        Sesi Aktif:{' '}
+                        <strong className="text-blue-900 bg-blue-50 px-2 py-0.5 rounded-md border border-blue-200">
+                          {SESI_ABSEN_CONFIG[selectedSesi].labelLengkap}
+                        </strong>
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                      {ALL_SESI_ABSEN.map((sesiKey) => {
+                        const cfg = SESI_ABSEN_CONFIG[sesiKey];
+                        const isSelected = selectedSesi === sesiKey;
+                        return (
+                          <button
+                            key={sesiKey}
+                            type="button"
+                            onClick={() => setSelectedSesi(sesiKey)}
+                            className={`p-3 rounded-xl border text-left transition flex items-center justify-between cursor-pointer ${
+                              isSelected
+                                ? `${cfg.activeBg} border-transparent shadow-xs ring-2 ring-blue-500/30`
+                                : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200'
+                            }`}
+                          >
+                            <div className="flex items-center space-x-2.5 min-w-0">
+                              <i
+                                className={`${cfg.icon} text-base shrink-0 ${
+                                  isSelected ? 'text-white' : 'text-slate-600'
+                                }`}
+                              ></i>
+                              <div className="min-w-0">
+                                <p
+                                  className={`text-xs font-bold truncate ${
+                                    isSelected ? 'text-white' : 'text-slate-800'
+                                  }`}
+                                >
+                                  {cfg.labelLengkap}
+                                </p>
+                                <p
+                                  className={`text-[10px] truncate ${
+                                    isSelected ? 'text-blue-100' : 'text-slate-400'
+                                  }`}
+                                >
+                                  {cfg.waktuPerkiraan}
+                                </p>
+                              </div>
+                            </div>
+                            {isSelected && (
+                              <span className="bg-white/20 text-white text-[9px] font-black px-1.5 py-0.5 rounded-md uppercase shrink-0 ml-1">
+                                Aktif
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
                   <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-4">
                     <div className="w-full sm:w-auto flex flex-col sm:flex-row items-center gap-3">
                       <div className="w-full sm:w-auto">
@@ -551,11 +664,27 @@ Buatkan draf balasan ramah, santun, Islami, dan informatif dari pihak Ustadz Pen
                           ))}
                         </select>
                       </div>
+
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                          Filter Sesi:
+                        </label>
+                        <select
+                          value={guruRekapSesi}
+                          onChange={(e) => setGuruRekapSesi(e.target.value)}
+                          className="bg-slate-50 border border-slate-300 font-bold text-slate-800 rounded-xl text-xs py-2 px-3 focus:outline-none cursor-pointer"
+                        >
+                          <option value="ALL">Semua 3 Sesi</option>
+                          <option value="subuh">1: Absen Subuh</option>
+                          <option value="madrasah">2: Absen Madrasah</option>
+                          <option value="sorogan">3: Absen Sorogan (Malam)</option>
+                        </select>
+                      </div>
                     </div>
 
                     <div className="text-right w-full sm:w-auto">
                       <span className="text-[11px] font-bold px-3 py-1 rounded-full bg-blue-100 text-blue-800 border border-blue-200">
-                        Periode: {formatMonthYear(guruRekapMonth)}
+                        Periode: {formatMonthYear(guruRekapMonth)} {guruRekapSesi !== 'ALL' ? `• Sesi ${SESI_ABSEN_CONFIG[guruRekapSesi as SesiAbsen]?.nama}` : ''}
                       </span>
                     </div>
                   </div>
@@ -563,7 +692,10 @@ Buatkan draf balasan ramah, santun, Islami, dan informatif dari pihak Ustadz Pen
                   {/* Summary Metric Cards for Class */}
                   {(() => {
                     const monthClassAbsen = absensis.filter(
-                      (a) => a.tanggal.startsWith(guruRekapMonth) && classSantris.some((s) => s.id === a.santriId)
+                      (a) =>
+                        a.tanggal.startsWith(guruRekapMonth) &&
+                        classSantris.some((s) => s.id === a.santriId) &&
+                        (guruRekapSesi === 'ALL' || (a.sesi || 'madrasah') === guruRekapSesi)
                     );
                     const totalH = monthClassAbsen.filter((a) => a.status === 'H').length;
                     const totalS = monthClassAbsen.filter((a) => a.status === 'S').length;
@@ -629,7 +761,10 @@ Buatkan draf balasan ramah, santun, Islami, dan informatif dari pihak Ustadz Pen
                         ) : (
                           classSantris.map((s, idx) => {
                             const santriMonthAbsen = absensis.filter(
-                              (a) => a.santriId === s.id && a.tanggal.startsWith(guruRekapMonth)
+                              (a) =>
+                                a.santriId === s.id &&
+                                a.tanggal.startsWith(guruRekapMonth) &&
+                                (guruRekapSesi === 'ALL' || (a.sesi || 'madrasah') === guruRekapSesi)
                             );
                             const hCount = santriMonthAbsen.filter((a) => a.status === 'H').length;
                             const sCount = santriMonthAbsen.filter((a) => a.status === 'S').length;

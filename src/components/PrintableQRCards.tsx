@@ -1,7 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import QRCode from 'qrcode';
-import { LandingCMS, Santri, TingkatKelas } from '../types';
-import { SANTRIWAN_CLASSES, SANTRIWATI_CLASSES } from '../data/initialData';
+import { LandingCMS, Santri } from '../types';
+import {
+  FORMAL_SMP_SANTRIWAN,
+  FORMAL_MA_SANTRIWAN,
+  NON_FORMAL_SANTRIWAN,
+  FORMAL_SMP_SANTRIWATI,
+  FORMAL_MA_SANTRIWATI,
+  NON_FORMAL_SANTRIWATI,
+} from '../data/initialData';
 
 interface PrintableQRCardsProps {
   cms: LandingCMS;
@@ -27,7 +34,7 @@ export const PrintableQRCards: React.FC<PrintableQRCardsProps> = ({
   const filteredSantris = santris.filter((s) => {
     if (selectedOnlyId !== null && s.id !== selectedOnlyId) return false;
     if (filterGender !== 'ALL' && s.jk !== filterGender) return false;
-    if (filterClass !== 'ALL' && s.kelas !== filterClass) return false;
+    if (filterClass !== 'ALL' && s.kelas !== filterClass && s.kelasKedua !== filterClass) return false;
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       return s.nama.toLowerCase().includes(q) || s.nis.toLowerCase().includes(q);
@@ -155,14 +162,34 @@ export const PrintableQRCards: React.FC<PrintableQRCardsProps> = ({
               onChange={(e) => setFilterClass(e.target.value)}
               className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 font-medium cursor-pointer"
             >
-              <option value="ALL">Semua Kelas (12 Kelas)</option>
-              <optgroup label="Santriwan (Putra)">
-                {SANTRIWAN_CLASSES.map((c) => (
+              <option value="ALL">Semua Kelas (Formal & Non Formal)</option>
+              <optgroup label="Formal - SMP (Putra)">
+                {FORMAL_SMP_SANTRIWAN.map((c) => (
                   <option key={c} value={c}>{c}</option>
                 ))}
               </optgroup>
-              <optgroup label="Santriwati (Putri)">
-                {SANTRIWATI_CLASSES.map((c) => (
+              <optgroup label="Formal - MA (Putra)">
+                {FORMAL_MA_SANTRIWAN.map((c) => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </optgroup>
+              <optgroup label="Non Formal / Diniyah (Putra)">
+                {NON_FORMAL_SANTRIWAN.map((c) => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </optgroup>
+              <optgroup label="Formal - SMP (Putri)">
+                {FORMAL_SMP_SANTRIWATI.map((c) => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </optgroup>
+              <optgroup label="Formal - MA (Putri)">
+                {FORMAL_MA_SANTRIWATI.map((c) => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </optgroup>
+              <optgroup label="Non Formal / Diniyah (Putri)">
+                {NON_FORMAL_SANTRIWATI.map((c) => (
                   <option key={c} value={c}>{c}</option>
                 ))}
               </optgroup>
@@ -274,18 +301,21 @@ export const PrintableQRCards: React.FC<PrintableQRCardsProps> = ({
                       <h3 className="font-black text-sm text-slate-900 leading-tight uppercase line-clamp-1">
                         {s.nama}
                       </h3>
-                      <div className="inline-block mt-1 bg-emerald-50 text-emerald-800 border border-emerald-200 text-[11px] font-bold px-3 py-0.5 rounded-full">
-                        {s.kelas}
+                      <div className="flex flex-wrap items-center justify-center gap-1 mt-1">
+                        <span className="inline-block bg-emerald-50 text-emerald-800 border border-emerald-200 text-[10px] font-bold px-2.5 py-0.5 rounded-full">
+                          {s.kelas}
+                        </span>
+                        {s.kelasKedua && (
+                          <span className="inline-block bg-amber-50 text-amber-800 border border-amber-200 text-[10px] font-bold px-2.5 py-0.5 rounded-full">
+                            {s.kelasKedua}
+                          </span>
+                        )}
                       </div>
                     </div>
 
                     {/* Details Table in Card */}
-                    <div className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2 text-left text-[10px] space-y-1 text-slate-700">
-                      <div className="flex justify-between">
-                        <span className="text-slate-400">Wali Santri:</span>
-                        <span className="font-semibold text-slate-800 truncate max-w-[150px]">{s.wali}</span>
-                      </div>
-                      <div className="flex justify-between">
+                    <div className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2 text-left text-[10px] text-slate-700">
+                      <div className="flex justify-between items-center">
                         <span className="text-slate-400">Status Kartu:</span>
                         <span className="font-bold text-emerald-700 flex items-center gap-1">
                           <i className="fa-solid fa-circle-check text-[9px]"></i>

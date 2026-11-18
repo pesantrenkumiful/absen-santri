@@ -1,13 +1,19 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Html5Qrcode } from 'html5-qrcode';
-import { Santri, AbsensiRecord, Guru } from '../types';
+import { Santri, AbsensiRecord, Guru, SesiAbsen, SESI_ABSEN_CONFIG, ALL_SESI_ABSEN } from '../types';
 import { playScanSound } from '../utils/sound';
+import { getDefaultSesiNow } from '../utils/dateHelper';
 
 interface QrAttendanceScannerProps {
   currentGuru: Guru;
   santris: Santri[];
   absensis: AbsensiRecord[];
-  onRecordAttendance: (santriId: number, tanggal: string, status: 'H' | 'S' | 'I' | 'A') => void;
+  onRecordAttendance: (
+    santriId: number,
+    tanggal: string,
+    status: 'H' | 'S' | 'I' | 'A',
+    sesi?: SesiAbsen
+  ) => void;
   onShowToast: (msg: string, type: 'info' | 'success' | 'error' | 'warning') => void;
   onClose?: () => void;
 }
@@ -18,6 +24,7 @@ interface ScanHistoryItem {
   nama: string;
   nis: string;
   kelas: string;
+  sesi: SesiAbsen;
   time: string;
   status: 'SUCCESS' | 'DUPLICATE' | 'ERROR';
   message: string;
@@ -33,6 +40,7 @@ export const QrAttendanceScanner: React.FC<QrAttendanceScannerProps> = ({
 }) => {
   const todayStr = new Date().toISOString().split('T')[0];
   const [scanDate, setScanDate] = useState<string>(todayStr);
+  const [selectedSesi, setSelectedSesi] = useState<SesiAbsen>(() => getDefaultSesiNow());
   const [filterClass, setFilterClass] = useState<string>(
     currentGuru.assignedClasses && currentGuru.assignedClasses.length > 0
       ? currentGuru.assignedClasses[0]
@@ -205,6 +213,7 @@ export const QrAttendanceScanner: React.FC<QrAttendanceScannerProps> = ({
         nama: 'Tidak Dikenali',
         nis: rawText.slice(0, 20),
         kelas: '-',
+        sesi: selectedSesi,
         time: nowTime,
         status: 'ERROR',
         message: 'QR Code tidak terdaftar di database santri pondok!',
@@ -220,11 +229,16 @@ export const QrAttendanceScanner: React.FC<QrAttendanceScannerProps> = ({
     }
 
     // ========================================================
-    // CRITICAL REQUIREMENT: SCAN HANYA 1 KALI PER HARI
+    // CRITICAL REQUIREMENT: SCAN HANYA 1 KALI PER SESI
     // ========================================================
     const existing = absensis.find(
-      (a) => a.santriId === targetSantri!.id && a.tanggal === scanDate
+      (a) =>
+        a.santriId === targetSantri!.id &&
+        a.tanggal === scanDate &&
+        (a.sesi || 'madrasah') === selectedSesi
     );
+
+    const sesiInfo = SESI_ABSEN_CONFIG[selectedSesi];
 
     if (existing) {
       // REJECT DUPLICATE SCAN
@@ -239,7 +253,7 @@ export const QrAttendanceScanner: React.FC<QrAttendanceScannerProps> = ({
           ? 'Izin'
           : 'Alpha';
 
-      const dupMessage = `Presensi DITOLAK! Santri sudah melakukan presensi hari ini (${scanDate}) dengan status: ${statusLabel}. Presensi QR hanya 1 kali per hari.`;
+      const dupMessage = `Presensi DITOLAK! Santri sudah melakukan presensi [${sesiInfo.nama}] hari ini (${scanDate}) dengan status: ${statusLabel}. Presensi QR dibatasi hanya 1 kali untuk sesi ini.`;
 
       const dupItem: ScanHistoryItem = {
         id: `${Date.now()}`,
@@ -247,9 +261,10 @@ export const QrAttendanceScanner: React.FC<QrAttendanceScannerProps> = ({
         nama: targetSantri.nama,
         nis: targetSantri.nis,
         kelas: targetSantri.kelas,
+        sesi: selectedSesi,
         time: nowTime,
         status: 'DUPLICATE',
-        message: `Sudah Absen (${statusLabel}) - Ditolak`,
+        message: `Sudah Absen [${sesiInfo.nama}] - Ditolak (1x Scan)`,
       };
 
       setScanHistory((prev) => [dupItem, ...prev.slice(0, 49)]);
@@ -261,17 +276,20 @@ export const QrAttendanceScanner: React.FC<QrAttendanceScannerProps> = ({
         timestamp: nowTime,
       });
 
-      onShowToast(`⚠️ Scan Ditolak: ${targetSantri.nama} SUDAH absen hari ini! (Hanya 1 kali)`, 'warning');
+      onShowToast(
+        `⚠️ Scan Ditolak: ${targetSantri.nama} SUDAH absen untuk [${sesiInfo.nama}]! (Hanya 1 kali)`,
+        'warning'
+      );
       return;
     }
 
     // ========================================================
-    // FIRST SCAN OF THE DAY: SUCCESS RECORD
+    // FIRST SCAN OF THIS SESSION: SUCCESS RECORD
     // ========================================================
     playScanSound('success');
 
-    // Record attendance as HADIR
-    onRecordAttendance(targetSantri.id, scanDate, 'H');
+    // Record attendance as HADIR for selectedSesi
+    onRecordAttendance(targetSantri.id, scanDate, 'H', selectedSesi);
 
     const successItem: ScanHistoryItem = {
       id: `${Date.now()}`,
@@ -279,20 +297,21 @@ export const QrAttendanceScanner: React.FC<QrAttendanceScannerProps> = ({
       nama: targetSantri.nama,
       nis: targetSantri.nis,
       kelas: targetSantri.kelas,
+      sesi: selectedSesi,
       time: nowTime,
       status: 'SUCCESS',
-      message: 'Presensi Hadir Berhasil Tercatat',
+      message: `Presensi [${sesiInfo.nama}] Hadir Berhasil Tercatat`,
     };
 
     setScanHistory((prev) => [successItem, ...prev.slice(0, 49)]);
     setLastScannedResult({
       santri: targetSantri,
       status: 'SUCCESS',
-      message: `Presensi Berhasil! Santri ${targetSantri.nama} (${targetSantri.kelas}) resmi tercatat Hadir.`,
+      message: `Presensi Berhasil! Santri ${targetSantri.nama} (${targetSantri.kelas}${targetSantri.kelasKedua ? ` • ${targetSantri.kelasKedua}` : ''}) resmi tercatat Hadir pada ${sesiInfo.labelLengkap}.`,
       timestamp: nowTime,
     });
 
-    onShowToast(`✅ Presensi Sukses: ${targetSantri.nama} (${targetSantri.kelas}) Tercatat Hadir!`, 'success');
+    onShowToast(`✅ Presensi Sukses: ${targetSantri.nama} Tercatat Hadir [${sesiInfo.nama}]!`, 'success');
   };
 
   // Image file scan fallback
@@ -320,20 +339,25 @@ export const QrAttendanceScanner: React.FC<QrAttendanceScannerProps> = ({
     setManualInput('');
   };
 
-  // Calculate statistics for the selected class/date
+  // Calculate statistics for the selected class/date/session
   const filteredSantrisForStats = filterClass === 'ALL'
     ? santris
-    : santris.filter((s) => s.kelas === filterClass);
+    : santris.filter((s) => s.kelas === filterClass || s.kelasKedua === filterClass);
 
   const totalFiltered = filteredSantrisForStats.length;
   const hadirCount = filteredSantrisForStats.filter((s) => {
-    const rec = absensis.find((a) => a.santriId === s.id && a.tanggal === scanDate);
+    const rec = absensis.find(
+      (a) =>
+        a.santriId === s.id &&
+        a.tanggal === scanDate &&
+        (a.sesi || 'madrasah') === selectedSesi
+    );
     return rec && rec.status === 'H';
   }).length;
   const belumAbsenCount = Math.max(0, totalFiltered - hadirCount);
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
       {/* Hidden container for file scan fallback if needed */}
       <div id="qr-reader-temp" className="hidden"></div>
 
@@ -349,11 +373,11 @@ export const QrAttendanceScanner: React.FC<QrAttendanceScannerProps> = ({
               <span>Live QR Scanner Presensi</span>
             </div>
             <h2 className="text-xl sm:text-2xl font-black text-white">Pemindai Kartu Santri</h2>
-            <p className="text-xs text-emerald-100/80 flex items-center gap-2 mt-0.5">
+            <p className="text-xs text-emerald-100/80 flex items-center gap-2 mt-0.5 flex-wrap">
               <span>Pengampu: <strong>{currentGuru.nama}</strong></span>
               <span>&bull;</span>
               <span className="font-semibold text-amber-300">
-                <i className="fa-solid fa-shield-halved mr-1"></i>Sistem Keamanan: Scan Hanya 1 Kali / Hari
+                <i className="fa-solid fa-shield-halved mr-1"></i>Scan Dibatasi 1 Kali per Sesi
               </span>
             </p>
           </div>
@@ -369,6 +393,73 @@ export const QrAttendanceScanner: React.FC<QrAttendanceScannerProps> = ({
             Kembali ke Daftar Presensi
           </button>
         )}
+      </div>
+
+      {/* Pilihan 3 Sesi Presensi Harian (Wajib Pilih Sesi) */}
+      <div className="bg-white p-4 rounded-2xl border border-slate-200/90 shadow-xs space-y-2.5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-2">
+          <div className="flex items-center gap-2">
+            <span className="w-7 h-7 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center text-xs font-bold">
+              <i className="fa-solid fa-clock"></i>
+            </span>
+            <div>
+              <h3 className="font-bold text-slate-800 text-xs sm:text-sm">
+                Pilih Sesi Presensi Aktif:
+              </h3>
+              <p className="text-[11px] text-slate-500">
+                Tiap sesi memiliki kuota 1x scan terpisah per santri per hari
+              </p>
+            </div>
+          </div>
+          <div className="text-xs font-semibold text-slate-600">
+            Sesi Terpilih:{' '}
+            <span className="text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+              {SESI_ABSEN_CONFIG[selectedSesi].labelLengkap}
+            </span>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+          {ALL_SESI_ABSEN.map((sesiKey) => {
+            const cfg = SESI_ABSEN_CONFIG[sesiKey];
+            const isSelected = selectedSesi === sesiKey;
+            return (
+              <button
+                key={sesiKey}
+                type="button"
+                onClick={() => setSelectedSesi(sesiKey)}
+                className={`p-3 rounded-xl border text-left transition flex items-center justify-between cursor-pointer ${
+                  isSelected
+                    ? `${cfg.activeBg} border-transparent shadow-md ring-2 ring-emerald-500/30`
+                    : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200'
+                }`}
+              >
+                <div className="flex items-center space-x-2.5 min-w-0">
+                  <div
+                    className={`w-9 h-9 rounded-xl flex items-center justify-center text-sm shrink-0 ${
+                      isSelected ? 'bg-white/20 text-white' : 'bg-white text-slate-700 shadow-xs'
+                    }`}
+                  >
+                    <i className={cfg.icon}></i>
+                  </div>
+                  <div className="min-w-0">
+                    <p className={`text-xs font-bold truncate ${isSelected ? 'text-white' : 'text-slate-800'}`}>
+                      {cfg.labelLengkap}
+                    </p>
+                    <p className={`text-[10px] truncate ${isSelected ? 'text-emerald-100' : 'text-slate-500'}`}>
+                      {cfg.waktuPerkiraan}
+                    </p>
+                  </div>
+                </div>
+                {isSelected && (
+                  <span className="bg-white/25 text-white text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider shrink-0 ml-1">
+                    Aktif
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {/* Control Bar: Date & Class Selector & Camera Controls */}

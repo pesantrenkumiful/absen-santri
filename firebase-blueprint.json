@@ -39,10 +39,12 @@
         "nis": { "type": "string" },
         "nama": { "type": "string" },
         "kelas": { "type": "string" },
+        "kelasKedua": { "type": "string" },
         "jk": { "type": "string" },
         "wali": { "type": "string" },
         "hp": { "type": "string" },
-        "passWali": { "type": "string" }
+        "passWali": { "type": "string" },
+        "foto": { "type": "string" }
       },
       "required": ["id", "nis", "nama", "kelas", "jk", "wali", "passWali"]
     },
@@ -65,13 +67,16 @@
     },
     "AbsensiRecord": {
       "title": "AbsensiRecord",
-      "description": "Daily attendance status record for a santri",
+      "description": "Daily 3-session attendance status record for a santri (subuh, madrasah, sorogan)",
       "type": "object",
       "properties": {
         "id": { "type": "number" },
         "santriId": { "type": "number" },
         "tanggal": { "type": "string" },
-        "status": { "type": "string" }
+        "sesi": { "type": "string" },
+        "status": { "type": "string" },
+        "waktuScan": { "type": "string" },
+        "metode": { "type": "string" }
       },
       "required": ["id", "santriId", "tanggal", "status"]
     },

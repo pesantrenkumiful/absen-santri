@@ -9,7 +9,7 @@ import {
   Tooltip,
   Legend,
 } from 'recharts';
-import { AbsensiRecord, Santri } from '../types';
+import { AbsensiRecord, Santri, ALL_SESI_ABSEN, SESI_ABSEN_CONFIG, SesiAbsen } from '../types';
 import { formatMonthYear, INDONESIAN_MONTHS } from '../utils/dateHelper';
 
 interface MonthlyAttendanceChartProps {
@@ -18,6 +18,7 @@ interface MonthlyAttendanceChartProps {
   selectedMonth: string;
   selectedClassFilter: string;
   selectedGenderFilter: string;
+  selectedSesiFilter?: string;
 }
 
 export const MonthlyAttendanceChart: React.FC<MonthlyAttendanceChartProps> = ({
@@ -26,8 +27,14 @@ export const MonthlyAttendanceChart: React.FC<MonthlyAttendanceChartProps> = ({
   selectedMonth,
   selectedClassFilter,
   selectedGenderFilter,
+  selectedSesiFilter = 'ALL',
 }) => {
-  type ChartMode = 'class_distribution' | 'daily_trend' | 'discipline_rate' | 'month_comparison';
+  type ChartMode =
+    | 'class_distribution'
+    | 'daily_trend'
+    | 'discipline_rate'
+    | 'session_comparison'
+    | 'month_comparison';
   const [chartMode, setChartMode] = useState<ChartMode>('class_distribution');
   const [isStacked, setIsStacked] = useState<boolean>(true);
 
@@ -35,7 +42,7 @@ export const MonthlyAttendanceChart: React.FC<MonthlyAttendanceChartProps> = ({
   const filteredSantris = useMemo(() => {
     let list = santris;
     if (selectedClassFilter !== 'ALL') {
-      list = list.filter((s) => s.kelas === selectedClassFilter);
+      list = list.filter((s) => s.kelas === selectedClassFilter || s.kelasKedua === selectedClassFilter);
     }
     if (selectedGenderFilter !== 'ALL') {
       list = list.filter((s) => s.jk === selectedGenderFilter);
@@ -45,8 +52,8 @@ export const MonthlyAttendanceChart: React.FC<MonthlyAttendanceChartProps> = ({
 
   const santriIdsSet = useMemo(() => new Set(filteredSantris.map((s) => s.id)), [filteredSantris]);
 
-  // Absensis in the selected month for filtered santris
-  const monthAbsensis = useMemo(() => {
+  // Absensis in the selected month for filtered santris (without session filter, used for 3-session comparison)
+  const monthAllSesiAbsensis = useMemo(() => {
     return absensis.filter((a) => {
       const matchMonth = selectedMonth === 'ALL' || a.tanggal.startsWith(selectedMonth);
       const matchSantri = santriIdsSet.has(a.santriId);
@@ -54,13 +61,31 @@ export const MonthlyAttendanceChart: React.FC<MonthlyAttendanceChartProps> = ({
     });
   }, [absensis, selectedMonth, santriIdsSet]);
 
+  // Absensis in the selected month & session for filtered santris
+  const monthAbsensis = useMemo(() => {
+    return monthAllSesiAbsensis.filter((a) => {
+      return selectedSesiFilter === 'ALL' || (a.sesi || 'madrasah') === selectedSesiFilter;
+    });
+  }, [monthAllSesiAbsensis, selectedSesiFilter]);
+
   // 1. Data: Distribusi Status Kehadiran per Kelas
   const classDistributionData = useMemo(() => {
-    // Unique classes in filtered santris
-    const classList = Array.from(new Set(filteredSantris.map((s) => s.kelas))).sort();
+    // Unique classes in filtered santris (including kelasKedua if no specific single class is filtered)
+    const classSet = new Set<string>();
+    filteredSantris.forEach((s) => {
+      if (selectedClassFilter === 'ALL') {
+        classSet.add(s.kelas);
+        if (s.kelasKedua) classSet.add(s.kelasKedua);
+      } else {
+        classSet.add(selectedClassFilter);
+      }
+    });
+    const classList = Array.from(classSet).sort();
 
     return classList.map((cls) => {
-      const classSantriIds = new Set(filteredSantris.filter((s) => s.kelas === cls).map((s) => s.id));
+      const classSantriIds = new Set(
+        filteredSantris.filter((s) => s.kelas === cls || s.kelasKedua === cls).map((s) => s.id)
+      );
       const classRecords = monthAbsensis.filter((a) => classSantriIds.has(a.santriId));
 
       const hadir = classRecords.filter((a) => a.status === 'H').length;
@@ -71,11 +96,12 @@ export const MonthlyAttendanceChart: React.FC<MonthlyAttendanceChartProps> = ({
       const percentage = total > 0 ? Math.round((hadir / total) * 100) : 0;
 
       // Clean short label for classes
-      let shortName = cls
+      const shortName = cls
         .replace(' (Santriwan)', ' (Pa)')
         .replace(' (Santriwati)', ' (Pi)')
         .replace('Awaliyah', 'Awa')
         .replace('Wustho', 'Wus')
+        .replace('Non Formal', 'Non-F')
         .replace('Ulya', 'Uly');
 
       return {
@@ -89,7 +115,7 @@ export const MonthlyAttendanceChart: React.FC<MonthlyAttendanceChartProps> = ({
         percentage,
       };
     });
-  }, [filteredSantris, monthAbsensis]);
+  }, [filteredSantris, monthAbsensis, selectedClassFilter]);
 
   // 2. Data: Tren Harian Kehadiran dalam Bulan
   const dailyTrendData = useMemo(() => {
@@ -122,19 +148,51 @@ export const MonthlyAttendanceChart: React.FC<MonthlyAttendanceChartProps> = ({
     });
   }, [monthAbsensis]);
 
-  // 3. Data: Perbandingan Antar Bulan (Sepanjang Tahun/Data)
+  // 3. Data: Perbandingan 3 Sesi Absen (Subuh, Madrasah, Sorogan)
+  const sessionComparisonData = useMemo(() => {
+    return ALL_SESI_ABSEN.map((sKey) => {
+      const info = SESI_ABSEN_CONFIG[sKey];
+      const records = monthAllSesiAbsensis.filter((a) => (a.sesi || 'madrasah') === sKey);
+      const hadir = records.filter((a) => a.status === 'H').length;
+      const sakit = records.filter((a) => a.status === 'S').length;
+      const izin = records.filter((a) => a.status === 'I').length;
+      const alpha = records.filter((a) => a.status === 'A').length;
+      const total = hadir + sakit + izin + alpha;
+      const percentage = total > 0 ? Math.round((hadir / total) * 100) : 0;
+
+      return {
+        sesi: sKey,
+        label: `${info.nomor}. ${info.nama}`,
+        fullLabel: info.labelLengkap,
+        hadir,
+        sakit,
+        izin,
+        alpha,
+        total,
+        percentage,
+      };
+    });
+  }, [monthAllSesiAbsensis]);
+
+  // 4. Data: Perbandingan Antar Bulan (Sepanjang Tahun/Data)
   const monthComparisonData = useMemo(() => {
     // Extract unique months from all absensis matching filtered santris
     const monthsSet = new Set<string>();
     absensis.forEach((a) => {
-      if (santriIdsSet.has(a.santriId) && a.tanggal.length >= 7) {
+      const matchSesi = selectedSesiFilter === 'ALL' || (a.sesi || 'madrasah') === selectedSesiFilter;
+      if (santriIdsSet.has(a.santriId) && matchSesi && a.tanggal.length >= 7) {
         monthsSet.add(a.tanggal.slice(0, 7));
       }
     });
 
     const sortedMonths = Array.from(monthsSet).sort();
     return sortedMonths.map((ym) => {
-      const records = absensis.filter((a) => a.tanggal.startsWith(ym) && santriIdsSet.has(a.santriId));
+      const records = absensis.filter(
+        (a) =>
+          a.tanggal.startsWith(ym) &&
+          santriIdsSet.has(a.santriId) &&
+          (selectedSesiFilter === 'ALL' || (a.sesi || 'madrasah') === selectedSesiFilter)
+      );
       const hadir = records.filter((a) => a.status === 'H').length;
       const sakit = records.filter((a) => a.status === 'S').length;
       const izin = records.filter((a) => a.status === 'I').length;
@@ -159,7 +217,7 @@ export const MonthlyAttendanceChart: React.FC<MonthlyAttendanceChartProps> = ({
         percentage,
       };
     });
-  }, [absensis, santriIdsSet]);
+  }, [absensis, santriIdsSet, selectedSesiFilter]);
 
   // Insight calculations
   const insights = useMemo(() => {
@@ -255,7 +313,7 @@ export const MonthlyAttendanceChart: React.FC<MonthlyAttendanceChartProps> = ({
       {/* Top Header & Visualizer Controls */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-slate-100 pb-3">
         <div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <h4 className="font-bold text-slate-800 text-sm sm:text-base flex items-center gap-2">
               <i className="fa-solid fa-chart-column text-emerald-700"></i>
               <span>Visualisasi & Dasbor Kehadiran Bulanan</span>
@@ -263,9 +321,18 @@ export const MonthlyAttendanceChart: React.FC<MonthlyAttendanceChartProps> = ({
             <span className="bg-emerald-50 text-emerald-800 text-[11px] font-bold px-2 py-0.5 rounded-full border border-emerald-200">
               {formatMonthYear(selectedMonth)}
             </span>
+            {selectedSesiFilter !== 'ALL' && SESI_ABSEN_CONFIG[selectedSesiFilter as SesiAbsen] && (
+              <span
+                className={`text-[11px] font-bold px-2 py-0.5 rounded-full border ${
+                  SESI_ABSEN_CONFIG[selectedSesiFilter as SesiAbsen].colorBadge
+                }`}
+              >
+                {SESI_ABSEN_CONFIG[selectedSesiFilter as SesiAbsen].nomor}: {SESI_ABSEN_CONFIG[selectedSesiFilter as SesiAbsen].nama}
+              </span>
+            )}
           </div>
           <p className="text-xs text-slate-500 mt-0.5">
-            Grafik interaktif pemantauan tingkat kedisiplinan dan absensi santri berbasis Recharts
+            Grafik interaktif pemantauan tingkat kedisiplinan dan 3 sesi absensi santri (Subuh, Madrasah, Sorogan)
           </p>
         </div>
 
@@ -282,6 +349,19 @@ export const MonthlyAttendanceChart: React.FC<MonthlyAttendanceChartProps> = ({
           >
             <i className="fa-solid fa-layer-group text-[11px]"></i>
             <span>Status per Kelas</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setChartMode('session_comparison')}
+            className={`px-3 py-1.5 rounded-lg font-bold transition flex items-center space-x-1.5 cursor-pointer ${
+              chartMode === 'session_comparison'
+                ? 'bg-white text-emerald-800 shadow-xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <i className="fa-solid fa-clock text-[11px]"></i>
+            <span>3 Sesi Absen</span>
           </button>
 
           <button
@@ -405,11 +485,13 @@ export const MonthlyAttendanceChart: React.FC<MonthlyAttendanceChartProps> = ({
       )}
 
       {/* Stacked / Grouped Toggle for distribution modes */}
-      {(chartMode === 'class_distribution' || chartMode === 'daily_trend') && (
+      {(chartMode === 'class_distribution' || chartMode === 'daily_trend' || chartMode === 'session_comparison') && (
         <div className="flex items-center justify-between text-xs text-slate-500 pt-1">
           <span className="text-[11px]">
             {chartMode === 'class_distribution'
               ? 'Menampilkan rekapitulasi Hadir (H), Sakit (S), Izin (I), dan Alpha (A) masing-masing kelas.'
+              : chartMode === 'session_comparison'
+              ? 'Membandingkan total presensi pada 3 sesi harian: 1. Absen Subuh, 2. Absen Madrasah, dan 3. Absen Sorogan.'
               : 'Menampilkan fluktuasi kehadiran santri per hari kegiatan aktif.'}
           </span>
           <div className="flex items-center space-x-2">
@@ -438,14 +520,15 @@ export const MonthlyAttendanceChart: React.FC<MonthlyAttendanceChartProps> = ({
 
       {/* Main Chart Area */}
       <div className="h-72 sm:h-80 w-full pt-2">
-        {!hasData && chartMode !== 'month_comparison' ? (
+        {((!hasData && chartMode !== 'month_comparison' && chartMode !== 'session_comparison') ||
+          (chartMode === 'session_comparison' && monthAllSesiAbsensis.length === 0)) ? (
           <div className="h-full flex flex-col items-center justify-center text-slate-400 bg-slate-50/60 rounded-xl border border-dashed border-slate-200 space-y-2">
             <i className="fa-solid fa-chart-column text-4xl text-slate-300"></i>
             <p className="text-sm font-semibold text-slate-600">
               Belum Ada Data Presensi di Periode {formatMonthYear(selectedMonth)}
             </p>
             <p className="text-xs text-slate-400 max-w-sm text-center">
-              Pilih bulan lain pada dropdown periode di atas atau input presensi santri via Ustadz/Scan QR.
+              Pilih bulan/sesi lain pada filter di atas atau input presensi santri via Ustadz/Scan QR.
             </p>
           </div>
         ) : (
@@ -601,6 +684,62 @@ export const MonthlyAttendanceChart: React.FC<MonthlyAttendanceChartProps> = ({
                       name="percentage"
                       fill="#059669"
                       radius={[6, 6, 0, 0]}
+                    />
+                  </BarChart>
+                );
+              }
+
+              if (chartMode === 'session_comparison') {
+                return (
+                  <BarChart
+                    data={sessionComparisonData}
+                    margin={{ top: 10, right: 15, left: -10, bottom: 15 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                    <XAxis
+                      dataKey="label"
+                      tick={{ fontSize: 12, fill: '#334155', fontWeight: 700 }}
+                    />
+                    <YAxis tick={{ fontSize: 11, fill: '#64748b' }} allowDecimals={false} />
+                    <Tooltip content={<CustomTooltip />} />
+                    <Legend
+                      verticalAlign="top"
+                      height={36}
+                      formatter={(val: string) => {
+                        if (val === 'hadir') return <span className="text-xs text-slate-700 font-bold">Hadir (H)</span>;
+                        if (val === 'sakit') return <span className="text-xs text-slate-700 font-bold">Sakit (S)</span>;
+                        if (val === 'izin') return <span className="text-xs text-slate-700 font-bold">Izin (I)</span>;
+                        if (val === 'alpha') return <span className="text-xs text-slate-700 font-bold">Alpha (A)</span>;
+                        return val;
+                      }}
+                    />
+                    <Bar
+                      dataKey="hadir"
+                      name="hadir"
+                      stackId={isStacked ? 'a' : undefined}
+                      fill="#10b981"
+                      radius={isStacked ? [0, 0, 0, 0] : [4, 4, 0, 0]}
+                    />
+                    <Bar
+                      dataKey="sakit"
+                      name="sakit"
+                      stackId={isStacked ? 'a' : undefined}
+                      fill="#f59e0b"
+                      radius={isStacked ? [0, 0, 0, 0] : [4, 4, 0, 0]}
+                    />
+                    <Bar
+                      dataKey="izin"
+                      name="izin"
+                      stackId={isStacked ? 'a' : undefined}
+                      fill="#3b82f6"
+                      radius={isStacked ? [0, 0, 0, 0] : [4, 4, 0, 0]}
+                    />
+                    <Bar
+                      dataKey="alpha"
+                      name="alpha"
+                      stackId={isStacked ? 'a' : undefined}
+                      fill="#f43f5e"
+                      radius={[4, 4, 0, 0]}
                     />
                   </BarChart>
                 );

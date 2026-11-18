@@ -58,3 +58,16 @@ export function getAvailableMonths(absensis: AbsensiRecord[]): string[] {
 
   return Array.from(set).sort().reverse();
 }
+
+/**
+ * Returns the recommended active session based on current time:
+ * - 03:00 - 07:00: 'subuh' (1: Absen Subuh)
+ * - 07:00 - 16:00: 'madrasah' (2: Absen Madrasah)
+ * - 16:00 - 02:59: 'sorogan' (3: Absen Sorogan / Pengajian Malam)
+ */
+export function getDefaultSesiNow(): import('../types').SesiAbsen {
+  const hour = new Date().getHours();
+  if (hour >= 3 && hour < 7) return 'subuh';
+  if (hour >= 7 && hour < 16) return 'madrasah';
+  return 'sorogan';
+}

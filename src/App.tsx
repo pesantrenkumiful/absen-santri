@@ -9,6 +9,7 @@ import {
   RoleType,
   ActiveUser,
   AdminCredentials,
+  SesiAbsen,
 } from './types';
 import {
   defaultLandingCMS,
@@ -356,16 +357,23 @@ export default function App() {
   const handleAddSantri = (newS: Omit<Santri, 'id'>) => {
     const nextId = santris.length > 0 ? Math.max(...santris.map((s) => s.id)) + 1 : 1;
     const santriObj: Santri = { ...newS, id: nextId };
+    if (!santriObj.kelasKedua) {
+      delete santriObj.kelasKedua;
+    }
     setSantris((prev) => [...prev, santriObj]);
     saveSantriToFirestore(santriObj);
   };
 
   const handleEditSantri = (updated: Santri) => {
-    setSantris((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
-    saveSantriToFirestore(updated);
+    const cleanUpdated: Santri = { ...updated };
+    if (!cleanUpdated.kelasKedua) {
+      delete cleanUpdated.kelasKedua;
+    }
+    setSantris((prev) => prev.map((s) => (s.id === cleanUpdated.id ? cleanUpdated : s)));
+    saveSantriToFirestore(cleanUpdated);
     // If logged in as this wali, sync session
-    if (currentUser?.role === 'wali' && currentUser.id === updated.id) {
-      setCurrentUser({ ...currentUser, name: updated.nama, data: updated });
+    if (currentUser?.role === 'wali' && currentUser.id === cleanUpdated.id) {
+      setCurrentUser({ ...currentUser, name: cleanUpdated.nama, data: cleanUpdated });
     }
   };
 
@@ -485,17 +493,38 @@ export default function App() {
 
   // Batch attendance saving with Firestore sync
   const handleSaveBatchAbsensi = (
-    records: { santriId: number; tanggal: string; status: 'H' | 'S' | 'I' | 'A' }[]
+    records: {
+      santriId: number;
+      tanggal: string;
+      status: 'H' | 'S' | 'I' | 'A';
+      sesi?: SesiAbsen;
+      waktuScan?: string;
+      metode?: 'QR_SCAN' | 'MANUAL';
+    }[]
   ) => {
     const toSave: AbsensiRecord[] = [];
     setAbsensis((prev) => {
       let updated = [...prev];
       records.forEach((rec) => {
+        const targetSesi = rec.sesi || 'madrasah';
         const idx = updated.findIndex(
-          (a) => a.santriId === rec.santriId && a.tanggal === rec.tanggal
+          (a) =>
+            a.santriId === rec.santriId &&
+            a.tanggal === rec.tanggal &&
+            (a.sesi || 'madrasah') === targetSesi
         );
         if (idx !== -1) {
-          updated[idx] = { ...updated[idx], status: rec.status };
+          const updatedRec: AbsensiRecord = {
+            ...updated[idx],
+            status: rec.status,
+            sesi: targetSesi,
+            metode: rec.metode || updated[idx].metode || 'MANUAL',
+          };
+          const resolvedWaktuScan = rec.waktuScan || updated[idx].waktuScan;
+          if (resolvedWaktuScan) {
+            updatedRec.waktuScan = resolvedWaktuScan;
+          }
+          updated[idx] = updatedRec;
           toSave.push(updated[idx]);
         } else {
           const newId = updated.length > 0 ? Math.max(...updated.map((a) => a.id)) + 1 : 1;
@@ -503,8 +532,13 @@ export default function App() {
             id: newId,
             santriId: rec.santriId,
             tanggal: rec.tanggal,
+            sesi: targetSesi,
             status: rec.status,
+            metode: rec.metode || 'MANUAL',
           };
+          if (rec.waktuScan) {
+            newRec.waktuScan = rec.waktuScan;
+          }
           updated.push(newRec);
           toSave.push(newRec);
         }

@@ -119,7 +119,10 @@ export async function saveAdminCredentialsToFirestore(creds: AdminCredentials) {
 export async function saveSantriToFirestore(santri: Santri) {
   const path = `santris/${santri.id}`;
   try {
-    await setDoc(doc(db, 'santris', String(santri.id)), santri, { merge: true });
+    const cleanSantri = Object.fromEntries(
+      Object.entries(santri).filter(([, value]) => value !== undefined && value !== '')
+    );
+    await setDoc(doc(db, 'santris', String(santri.id)), cleanSantri);
   } catch (err) {
     handleFirestoreError(err, OperationType.WRITE, path);
   }

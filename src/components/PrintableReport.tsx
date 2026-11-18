@@ -1,5 +1,5 @@
 import React from 'react';
-import { LandingCMS, Santri, AbsensiRecord, PelanggaranRecord, TingkatKelas } from '../types';
+import { LandingCMS, Santri, AbsensiRecord, PelanggaranRecord, SESI_ABSEN_CONFIG, SesiAbsen } from '../types';
 import { formatMonthYear } from '../utils/dateHelper';
 
 interface PrintableReportProps {
@@ -13,6 +13,7 @@ interface PrintableReportProps {
   pelanggarans: PelanggaranRecord[];
   onClose: () => void;
   selectedMonth?: string;
+  selectedSesi?: string;
 }
 
 export const PrintableReport: React.FC<PrintableReportProps> = ({
@@ -26,6 +27,7 @@ export const PrintableReport: React.FC<PrintableReportProps> = ({
   pelanggarans,
   onClose,
   selectedMonth,
+  selectedSesi = 'ALL',
 }) => {
   const currentDate = new Date().toLocaleDateString('id-ID', {
     day: 'numeric',
@@ -39,25 +41,36 @@ export const PrintableReport: React.FC<PrintableReportProps> = ({
     filteredSantri = filteredSantri.filter((s) => s.jk === genderFilter);
   }
   if (classFilter !== 'ALL') {
-    filteredSantri = filteredSantri.filter((s) => s.kelas === classFilter);
+    filteredSantri = filteredSantri.filter((s) => s.kelas === classFilter || s.kelasKedua === classFilter);
   }
 
-  // Monthly filtered absensi records
+  // Monthly & session filtered absensi records
   const effectiveAbsensis =
-    reportType === 'absen' && selectedMonth && selectedMonth !== 'ALL'
-      ? absensis.filter((a) => a.tanggal.startsWith(selectedMonth))
+    reportType === 'absen'
+      ? absensis.filter((a) => {
+          const matchMonth = !selectedMonth || selectedMonth === 'ALL' || a.tanggal.startsWith(selectedMonth);
+          const matchSesi = !selectedSesi || selectedSesi === 'ALL' || (a.sesi || 'madrasah') === selectedSesi;
+          return matchMonth && matchSesi;
+        })
       : absensis;
 
-  // Total active attendance days recorded in the period
-  const activeMeetingDates = Array.from(new Set(effectiveAbsensis.map((a) => a.tanggal)));
+  const getSesiLabel = () => {
+    if (!selectedSesi || selectedSesi === 'ALL') return 'Semua 3 Sesi (Subuh, Madrasah, Sorogan)';
+    return SESI_ABSEN_CONFIG[selectedSesi as SesiAbsen]?.labelLengkap || selectedSesi;
+  };
 
   const getReportTitle = () => {
     if (reportType === 'santri') return 'LAPORAN REKAPITULASI DATA SANTRI';
     if (reportType === 'absen') {
-      if (selectedMonth && selectedMonth !== 'ALL') {
-        return `LAPORAN REKAPITULASI PRESENSI SANTRI - BULAN ${formatMonthYear(selectedMonth).toUpperCase()}`;
-      }
-      return 'LAPORAN REKAPITULASI PRESENSI & KEHADIRAN SANTRI (SEMUA BULAN)';
+      const monthPart =
+        selectedMonth && selectedMonth !== 'ALL'
+          ? `BULAN ${formatMonthYear(selectedMonth).toUpperCase()}`
+          : 'SEMUA BULAN';
+      const sesiPart =
+        selectedSesi && selectedSesi !== 'ALL' && SESI_ABSEN_CONFIG[selectedSesi as SesiAbsen]
+          ? ` - ${SESI_ABSEN_CONFIG[selectedSesi as SesiAbsen].nama.toUpperCase()}`
+          : '';
+      return `LAPORAN REKAPITULASI PRESENSI SANTRI (${monthPart}${sesiPart})`;
     }
     return 'LAPORAN CATATAN KEDISIPLINAN & PELANGGARAN SANTRI';
   };
@@ -122,7 +135,8 @@ export const PrintableReport: React.FC<PrintableReportProps> = ({
             </h2>
             <p className="text-[11px] text-slate-600">
               Filter: {genderFilter === 'ALL' ? 'Semua Gender' : genderFilter} | Kelas:{' '}
-              {classFilter === 'ALL' ? 'Semua 12 Kelas' : classFilter} | Tanggal Cetak: {currentDate}
+              {classFilter === 'ALL' ? 'Semua Kelas (Formal & Non Formal)' : classFilter}
+              {reportType === 'absen' ? ` | Sesi: ${getSesiLabel()}` : ''} | Tanggal Cetak: {currentDate}
             </p>
           </div>
         </div>
@@ -149,7 +163,10 @@ export const PrintableReport: React.FC<PrintableReportProps> = ({
                     <td className="p-2 border border-slate-300 font-mono font-semibold">{s.nis}</td>
                     <td className="p-2 border border-slate-300 font-bold">{s.nama}</td>
                     <td className="p-2 border border-slate-300">{s.jk}</td>
-                    <td className="p-2 border border-slate-300 font-medium">{s.kelas}</td>
+                    <td className="p-2 border border-slate-300 font-medium">
+                      {s.kelas}
+                      {s.kelasKedua ? ` + ${s.kelasKedua}` : ''}
+                    </td>
                     <td className="p-2 border border-slate-300">{s.wali}</td>
                     <td className="p-2 border border-slate-300 font-mono">{s.hp}</td>
                   </tr>
@@ -170,7 +187,7 @@ export const PrintableReport: React.FC<PrintableReportProps> = ({
                   <th className="p-2 border border-slate-300 text-center font-bold text-amber-700">Sakit (S)</th>
                   <th className="p-2 border border-slate-300 text-center font-bold text-blue-700">Izin (I)</th>
                   <th className="p-2 border border-slate-300 text-center font-bold text-rose-700">Alpha (A)</th>
-                  <th className="p-2 border border-slate-300 text-center font-bold text-slate-800">Total Hari</th>
+                  <th className="p-2 border border-slate-300 text-center font-bold text-slate-800">Total Sesi</th>
                   <th className="p-2 border border-slate-300 text-center font-bold text-emerald-800">% Kehadiran</th>
                 </tr>
               </thead>
@@ -188,12 +205,15 @@ export const PrintableReport: React.FC<PrintableReportProps> = ({
                       <td className="p-2 border border-slate-300 text-center font-medium">{idx + 1}</td>
                       <td className="p-2 border border-slate-300 font-mono">{s.nis}</td>
                       <td className="p-2 border border-slate-300 font-bold">{s.nama}</td>
-                      <td className="p-2 border border-slate-300">{s.kelas}</td>
+                      <td className="p-2 border border-slate-300">
+                        {s.kelas}
+                        {s.kelasKedua ? ` + ${s.kelasKedua}` : ''}
+                      </td>
                       <td className="p-2 border border-slate-300 text-center font-bold text-emerald-700">{h}</td>
                       <td className="p-2 border border-slate-300 text-center font-bold text-amber-700">{sc}</td>
                       <td className="p-2 border border-slate-300 text-center font-bold text-blue-700">{i}</td>
                       <td className="p-2 border border-slate-300 text-center font-bold text-rose-700">{a}</td>
-                      <td className="p-2 border border-slate-300 text-center font-medium text-slate-700">{totalDays} Hari</td>
+                      <td className="p-2 border border-slate-300 text-center font-medium text-slate-700">{totalDays} Sesi</td>
                       <td className="p-2 border border-slate-300 text-center font-black text-emerald-700">{percentage}%</td>
                     </tr>
                   );
